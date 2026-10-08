@@ -1,0 +1,7 @@
+{
+    "diagnostics.libraryFiles": "Disable",
+    "runtime.version": "LuaJIT",
+    "workspace.checkThirdParty": "Disable",
+    "workspace.ignoreDir": [".dependencies"],
+    "workspace.library": ["$VIMRUNTIME/lua"]
+}

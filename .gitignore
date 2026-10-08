@@ -1,0 +1,5 @@
+.dependencies/
+*.rock
+luacov*
+.luarc.json.tmp
+nvim.log

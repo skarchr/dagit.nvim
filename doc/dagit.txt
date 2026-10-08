@@ -1,0 +1,282 @@
+*dagit.txt*  Git history in a horizontal split
+
+==============================================================================
+CONTENTS                                                      *dagit-contents*
+
+1. Introduction ............................................. |dagit-intro|
+2. Commands ................................................. |dagit-commands|
+3. Mappings ................................................. |dagit-mappings|
+4. Configuration ............................................ |dagit-config|
+5. Highlight groups ....................................... |dagit-highlights|
+6. API ...................................................... |dagit-api|
+7. Health ................................................... |dagit-health|
+
+==============================================================================
+1. Introduction                                                  *dagit-intro*
+
+dagit shows `git log` in a horizontal split. Each commit is one row:
+
+    > graph  hash (HEAD -> branch) subject    tag    author    date time
+
+`>` marks the highlighted row, in addition to the |hl-CursorLine|
+background. Other rows leave that cell blank so the graph stays aligned.
+The row for the commit HEAD points at is bold, and its decoration is
+`(HEAD -> branch)`. Tags sit on the right, ahead of the author. Several
+tags on one commit collapse to one label. The hash uses |DagitHash|.
+The caret is hidden. The window background follows the Snacks explorer
+(`SnacksPickerList`, then `SnacksPicker`, then |hl-NormalFloat|).
+
+A commit in the middle of a lane is a circle with a line through it, so a
+straight history stays connected. A tip has the line below the circle, and
+a root has the line above it. Ghostty, Kitty, and Contour paint the default
+glyphs to the cell edge. Other terminals use Nerd Font circles. Override
+|dagit-symbols| to draw plain characters instead.
+
+The graph, subject, and metadata colors are linked to your colorscheme.
+Override the |dagit-highlights| groups to change them.
+
+dagit works without calling |dagit.setup()|. The plugin file only creates
+|:Dagit| and the |dagit-mappings| `<Plug>` maps.
+
+Requirements: Neovim 0.10+, Git.
+
+==============================================================================
+2. Commands                                                   *dagit-commands*
+
+                                                                    *:Dagit*
+:Dagit [subcommand] [args]
+
+    Open the history when no subcommand is given. Subcommands:
+
+    :Dagit log [git-log-args]   Open the history. Arguments replace
+                                |dagit-log_args| for this call.
+                                Example: `:Dagit log main`
+    :Dagit refresh              Reload the open history
+    :Dagit copy                 Copy the hash under the cursor
+    :Dagit close                Close the history window
+
+    Tab completion lists the subcommands, and ref names after `:Dagit log`.
+
+The repository is the one that contains the current file, or the working
+directory when the current buffer has no file.
+
+==============================================================================
+3. Mappings                                                   *dagit-mappings*
+
+Buffer-local maps in the history window:
+
+    <C-o>     Copy the full hash of the cursor row     *<Plug>(DagitCopyHash)*
+    r         Reload the history                      *<Plug>(DagitRefresh)*
+    q         Close the window                        *<Plug>(DagitClose)*
+    <CR>      Run |dagit-on_select| when it is set
+
+<C-o> is local to the history buffer. The jump-list mapping is left alone
+in every other window.
+
+`<Plug>` maps, for your own keys:
+
+    vim.keymap.set("n", "<leader>gl", "<Plug>(DagitOpen)")
+    vim.keymap.set("n", "<leader>gy", "<Plug>(DagitCopyHash)")
+
+                                                         *<Plug>(DagitOpen)*
+
+Set |dagit-keymaps| entries to `false` to skip a default buffer map. A
+buffer-local map created from a |FileType| `dagit` autocommand is kept.
+
+==============================================================================
+4. Configuration                                                *dagit-config*
+
+Put overrides in `vim.g.dagit` or pass them to |dagit.setup()|. `setup()`
+wins when both are set. Both accept a table or a function that returns one.
+
+`setup()` does not open a window and does not create maps.
+
+    require("dagit").setup({
+        height = 18,
+        date_format = "relative",
+    })
+
+    vim.g.dagit = {
+        icons = { enabled = false },
+    }
+
+The resolved values:
+
+                                                         *dagit-height*
+height              number (default 16)
+                    Rows in the split. A number between 0 and 1 is a
+                    fraction of the screen.
+
+                                                         *dagit-split*
+split               "bottom" or "top" (default "bottom")
+
+                                                         *dagit-max_count*
+max_count           integer (default 256)
+                    Maximum commits to load.
+
+                                                         *dagit-log_args*
+log_args            string[] (default { "--all" })
+                    Extra arguments for `git log`. The list is replaced,
+                    not appended, when you override it.
+                    `--date-order` is added unless you pass `--date-order`,
+                    `--topo-order`, or `--author-date-order` yourself.
+
+                                                         *dagit-date_format*
+date_format         string (default "%d %b %H:%M")
+                    An |os.date()| format, or "relative".
+                    The default prints the day, month, and
+                    time. A format with no clock, such as
+                    "%d %b", still gets "HH:MM" after the
+                    date. "relative" uses ages such as
+                    "2h ago", and a full date with time
+                    after two weeks.
+
+                                                      *dagit-author_max_width*
+author_max_width    integer (default 22)
+
+                                                         *dagit-ref_max_width*
+ref_max_width       integer (default 28)
+                    Maximum display width of the
+                    `(HEAD -> branch)` decoration, including
+                    the parentheses, and of the tag on the
+                    right. Head and local branches are kept
+                    ahead of remotes. Names that do not fit
+                    are dropped from the end, then truncated.
+                    A tag is truncated to this width.
+
+                                                      *dagit-multi_tag_label*
+multi_tag_label     string (default "multi tag")
+                    Label used on the right when a commit has
+                    more than one tag. A single tag is shown
+                    by name.
+
+                                                         *dagit-dim_merges*
+dim_merges          boolean (default true)
+                    Use |DagitMerge| for commits that have more than one
+                    parent.
+
+                                                         *dagit-git_cmd*
+git_cmd             string (default "git")
+
+                                                         *dagit-notify*
+notify              boolean (default true)
+                    Show informational messages such as "Copied <hash>".
+                    Errors are still reported when this is false.
+
+                                                         *dagit-icons*
+icons.enabled       boolean (default true)
+icons.head          string  Glyph for the branch pointed at by HEAD
+icons.branch        string  Glyph for other local branches
+icons.remote        string  Glyph for remote-tracking branches
+icons.tag           string  Glyph for tags
+
+                    The defaults are Nerd Font icons, drawn
+                    before each branch name and before the
+                    tag on the right. Set `enabled` to false
+                    to show the name alone. `origin/HEAD` is
+                    hidden because it repeats the remote's
+                    default branch.
+
+                                                         *dagit-symbols*
+symbols.commit            string
+                    Lone commit. Nothing connects above or below it.
+symbols.commit_down       string
+                    Circle with a line down to the parent.
+symbols.commit_up         string
+                    Circle with a line up from the child.
+symbols.commit_through    string
+                    Circle with a line through it.
+symbols.vertical          string
+symbols.horizontal        string
+symbols.branch_start      string
+symbols.merge_right       string
+symbols.merge_left        string
+
+                    The four commit glyphs must be the same display width.
+                    On Ghostty, Kitty, and Contour the defaults are the
+                    branch-drawing glyphs those terminals paint to the cell
+                    edge, so a straight lane stays continuous. Elsewhere the
+                    defaults are Nerd Font circles and box-drawing lines.
+                    Setting `symbols` keeps your glyphs on every terminal.
+                    The cursor row is the highlight; the glyph stays in
+                    place so the line through the circle is not covered.
+
+                                                         *dagit-keymaps*
+keymaps.copy_hash   string or false (default "<C-o>")
+keymaps.close        string or false (default "q")
+keymaps.refresh     string or false (default "r")
+
+                                                         *dagit-on_select*
+on_select           fun(commit: dagit.Commit) or nil
+                    Called when you press <CR> on a row. This is the
+                    extension point for commit drilldown. The commit table
+                    has `hash`, `parents`, `author`, `timestamp`, `subject`,
+                    and `refs`. Each ref has `name` and `kind`
+                    (`head`, `branch`, `remote`, or `tag`).
+
+Invalid configuration is ignored. dagit keeps working with the defaults
+and reports the problem from |:checkhealth| and |vim.notify()|.
+
+==============================================================================
+5. Highlight groups                                         *dagit-highlights*
+
+These groups link to the active colorscheme. Defining one yourself, or in
+a colorscheme, replaces the link.
+
+    DagitGraph1 .. DagitGraph8    One color per graph lane. Branch,
+                                  remote, and HEAD names on a commit
+                                  use that commit's lane color.
+    DagitHash                     Abbreviated commit hash    (Label)
+    DagitDecor                    Parentheses and commas     (Delimiter)
+                                  around the ref list.
+    DagitNormal                   History window background.
+                                  SnacksPickerList, then
+                                  SnacksPicker, then NormalFloat.
+    DagitHead                     Bold text. The ">" on the
+                                  highlighted row, the
+                                  "HEAD ->" label, and the
+                                  subject when that commit is
+                                  HEAD and is not dimmed as
+                                  a merge.
+    DagitCursor                   Hidden caret. blend=100.
+    DagitMerge                    Merge commit subjects      (Comment)
+    DagitAuthor                   Author column              (Comment)
+    DagitDate                     Date and time column       (NonText)
+    DagitRefTag                   Tags                       (Constant)
+
+The links are reapplied on |ColorScheme| only when you have not defined
+the group.
+
+==============================================================================
+6. API                                                             *dagit-api*
+
+The Lua module is `dagit`. Modules under `dagit._core` are private.
+
+    require("dagit").setup(opts)           *dagit.setup()*
+        Store configuration. Returns the resolved config.
+
+    require("dagit").open(opts)            *dagit.open()*
+        Open or focus the history split.
+        opts.cwd        directory inside the repository
+        opts.log_args   replaces log_args for this open
+        opts.max_count  overrides max_count for this open
+        opts.height     overrides height for this open
+
+    require("dagit").refresh()             *dagit.refresh()*
+    require("dagit").close()               *dagit.close()*
+    require("dagit").copy_hash()           *dagit.copy_hash()*
+        Copy the full hash under the cursor into the unnamed register,
+        and into the `+` register when a clipboard provider exists.
+
+    require("dagit").commit()              *dagit.commit()*
+        The |dagit-on_select| commit under the cursor, or nil.
+
+==============================================================================
+7. Health                                                       *dagit-health*
+
+    :checkhealth dagit
+
+Reports the Git executable, whether the working directory is inside a
+repository, and any configuration errors.
+
+vim:tw=78:ts=8:ft=help:norl:
