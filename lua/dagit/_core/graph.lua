@@ -142,14 +142,53 @@ function M.layout(commits, symbols)
 
         ---@type table<integer, boolean>
         local connect = {}
+        ---@type table<integer, integer>
+        local link_colors = {}
+        ---@type table<integer, integer>
+        local link_rank = {}
+
+        -- A branch keeps its own color while it crosses other lanes. The
+        -- vertical it passes keeps that lane's color; only the horizontal
+        -- span is the branch.
+        local function endpoint_color(column)
+            if dropped[column] then
+                return dropped[column]
+            end
+
+            if dropped[idx] then
+                return color
+            end
+
+            if introduced[column] then
+                return introduced[column]
+            end
+
+            local lane = new_lanes[column]
+
+            if type(lane) == "table" then
+                return lane.color
+            end
+
+            return color
+        end
 
         for column, _ in pairs(linked) do
             if column ~= idx then
+                local branch_color = endpoint_color(column)
+                local distance = math.abs(column - idx)
                 local lo = math.min(idx, column)
                 local hi = math.max(idx, column)
 
                 for cursor = lo, hi - 1 do
                     connect[cursor] = true
+                    local rank = link_rank[cursor]
+
+                    -- The nearer branch owns a shared cell so an outer branch
+                    -- does not repaint the inner one.
+                    if not rank or distance < rank then
+                        link_colors[cursor] = branch_color
+                        link_rank[cursor] = distance
+                    end
                 end
             end
         end
@@ -219,22 +258,7 @@ function M.layout(commits, symbols)
             end
 
             local link = connect[index] and symbols.horizontal or " "
-            local link_color = piece_color
-            local next_cell_color = nil
-
-            if index < #new_lanes then
-                if introduced[index + 1] then
-                    next_cell_color = introduced[index + 1]
-                elseif dropped[index + 1] then
-                    next_cell_color = dropped[index + 1]
-                elseif new_lanes[index + 1] then
-                    next_cell_color = new_lanes[index + 1].color
-                end
-            end
-
-            if connect[index] and next_cell_color then
-                link_color = next_cell_color
-            end
+            local link_color = link_colors[index] or piece_color
 
             local function append(text, glyph_color)
                 if text == "" then

@@ -96,7 +96,7 @@ require("dagit").setup({
     split = "bottom",            -- "bottom" or "top"
     max_count = 256,
     log_args = { "--all" },      -- passed to `git log`
-    date_format = "%d %b %H:%M", -- os.date format, or "relative". A date-only format still gets HH:MM.
+    date_format = "%d %b %H:%M", -- os.date format, or "relative". A date-only format still gets HH:MM. Another year is shown; the current year is left off.
     author_max_width = 22,
     ref_max_width = 28,          -- width of "(HEAD -> branch)" and of the tag
     multi_tag_label = "multi tag", -- several tags collapse to this label

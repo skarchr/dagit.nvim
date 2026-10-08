@@ -52,6 +52,53 @@ local function with_clock(format)
     return format .. " %H:%M"
 end
 
+--- True when an |os.date()| format already prints a year.
+---
+---@param format string
+---@return boolean
+local function format_has_year(format)
+    -- `%%` is a literal percent. `%F` is `%Y-%m-%d` and `%D` is `%m/%d/%y`.
+    local stripped = format:gsub("%%%%", "\0\0")
+
+    return stripped:find("%%[YyGgCcxDF]") ~= nil or stripped:find("%%%+") ~= nil
+end
+
+--- Print the year for a commit from another year.
+---
+--- The current year is left off. A format that already prints a year is
+--- unchanged. The year is placed just before the clock.
+---
+---@param format string
+---@param year integer
+---@param now integer?
+---@return string
+local function with_year(format, year, now)
+    if format_has_year(format) then
+        return format
+    end
+
+    local today = os.date("*t", now or os.time())
+
+    if year == today.year then
+        return format
+    end
+
+    local stripped = format:gsub("%%%%", "\0\0")
+    local at = stripped:find("%%[HIMSpRrTXc]") or stripped:find("%%%+")
+
+    if not at then
+        return format .. " %Y"
+    end
+
+    local prefix = format:sub(1, at - 1)
+
+    if prefix:sub(-1) ~= " " then
+        prefix = prefix .. " "
+    end
+
+    return prefix .. "%Y " .. format:sub(at)
+end
+
 ---@param timestamp string
 ---@param format string
 ---@param now integer?
@@ -87,6 +134,8 @@ function M.format_date(timestamp, format, now)
 
         format = "%d %b %H:%M"
     end
+
+    format = with_year(format, tonumber(year), now)
 
     local ok, formatted = pcall(os.date, format, instant)
 

@@ -125,11 +125,14 @@ log_args            string[] (default { "--all" })
 date_format         string (default "%d %b %H:%M")
                     An |os.date()| format, or "relative".
                     The default prints the day, month, and
-                    time. A format with no clock, such as
-                    "%d %b", still gets "HH:MM" after the
-                    date. "relative" uses ages such as
-                    "2h ago", and a full date with time
-                    after two weeks.
+                    time. A commit from another year also
+                    prints that year. The current year is
+                    left off. A format with no clock, such
+                    as "%d %b", still gets "HH:MM" after
+                    the date. A format that already prints
+                    a year is left as written. "relative"
+                    uses ages such as "2h ago", and a full
+                    date with time after two weeks.
 
                                                       *dagit-author_max_width*
 author_max_width    integer (default 22)

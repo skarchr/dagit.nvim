@@ -48,6 +48,22 @@ describe("render.format_date", function()
 
         assert.equal("2h ago", text)
     end)
+
+    it("hides the year for a commit from the current year", function()
+        local now = os.time({ year = 2026, month = 10, day = 8, hour = 12, min = 0, sec = 0 })
+        local text = render.format_date("2026-10-08T10:05:00Z", "%d %b %H:%M", now)
+        local instant = os.time({ year = 2026, month = 10, day = 8, hour = 10, min = 5, sec = 0 })
+
+        assert.equal(os.date("%d %b %H:%M", instant), text)
+    end)
+
+    it("shows the year for a commit from a previous year", function()
+        local now = os.time({ year = 2026, month = 10, day = 8, hour = 12, min = 0, sec = 0 })
+        local text = render.format_date("2025-03-02T09:15:00Z", "%d %b %H:%M", now)
+        local instant = os.time({ year = 2025, month = 3, day = 2, hour = 9, min = 15, sec = 0 })
+
+        assert.equal(os.date("%d %b %Y %H:%M", instant), text)
+    end)
 end)
 
 describe("render.build", function()
