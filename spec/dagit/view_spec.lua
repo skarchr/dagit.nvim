@@ -67,7 +67,7 @@ describe("view", function()
         local resolved = require("dagit._core.configuration").resolve()
         assert.truthy(vim.startswith(lines[1], "> " .. resolved.symbols.commit_down))
         assert.truthy(lines[1]:find(head:sub(1, 7), 1, true) ~= nil)
-        assert.truthy(lines[1]:find("HEAD -> ", 1, true) ~= nil)
+        assert.truthy(lines[1]:find(" HEAD  (", 1, true) ~= nil)
         assert.truthy(lines[1]:find("main)", 1, true) ~= nil)
         assert.truthy(lines[2]:find("feature)", 1, true) ~= nil)
 
@@ -92,6 +92,7 @@ describe("view", function()
         local highlighted_rows = {}
         local selected_author = false
         local saw_time = false
+        local saw_head_overlay = false
 
         for _, mark in ipairs(marks) do
             local details = mark[4]
@@ -111,8 +112,17 @@ describe("view", function()
                     end
                 end
             end
+
+            if details and details.virt_text_pos == "overlay" then
+                for _, chunk in ipairs(details.virt_text or {}) do
+                    if chunk[1] == " HEAD " and chunk[2]:find("DagitHeadMark", 1, true) == 1 then
+                        saw_head_overlay = true
+                    end
+                end
+            end
         end
 
+        assert.equal(true, saw_head_overlay)
         assert.same({ 1 }, highlighted_rows)
         assert.equal(true, selected_author)
         assert.equal(true, saw_time)
@@ -133,6 +143,38 @@ describe("view", function()
         assert.equal(guicursor, vim.o.guicursor)
     end)
 
+    it("opens on the checked-out commit when it is not the newest row", function()
+        vim.cmd("enew")
+        local dir = repo()
+        git(dir, "checkout", "-q", "feature")
+        local head = git(dir, "rev-parse", "HEAD")
+        local opened = require("dagit").open({ cwd = dir, height = 12, log_args = { "--all" } })
+
+        assert.equal(true, opened)
+        local commit = require("dagit").commit()
+        assert.truthy(commit)
+        assert.equal(head, commit.hash)
+
+        local row = vim.api.nvim_win_get_cursor(0)[1]
+        local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+        assert.truthy(row > 1)
+        assert.truthy(vim.startswith(lines[1], "  "))
+        assert.truthy(vim.startswith(lines[row], "> "))
+        assert.truthy(lines[row]:find(" HEAD  (", 1, true) ~= nil)
+
+        vim.cmd("normal! j")
+        vim.api.nvim_exec_autocmds("CursorMoved", { buffer = vim.api.nvim_get_current_buf() })
+        local moved = require("dagit").commit()
+        assert.truthy(moved)
+        assert.truthy(moved.hash ~= head)
+        assert.equal(true, require("dagit").refresh())
+        local kept = require("dagit").commit()
+        assert.truthy(kept)
+        assert.equal(moved.hash, kept.hash)
+
+        require("dagit").close()
+    end)
+
     it("shows an error when the directory is not a repository", function()
         local dir = vim.fn.tempname()
         vim.fn.mkdir(dir, "p")
@@ -142,6 +184,145 @@ describe("view", function()
         assert.equal(false, opened)
         local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
         assert.truthy(lines[1]:find("not a git repository", 1, true) ~= nil)
+        require("dagit").close()
+    end)
+
+    it("toggles the description and files under the commit", function()
+        vim.cmd("enew")
+        local dir = vim.fn.tempname()
+        vim.fn.mkdir(dir, "p")
+        git(dir, "init", "-b", "main")
+        git(dir, "config", "user.email", "dagit@example.com")
+        git(dir, "config", "user.name", "Dagit Test")
+        git(dir, "config", "commit.gpgsign", "false")
+        write(dir .. "/gone.txt", "gone\n")
+        write(dir .. "/keep.txt", "keep\n")
+        write(dir .. "/old-name.txt", "same\n")
+        git(dir, "add", "gone.txt", "keep.txt", "old-name.txt")
+        git(dir, "commit", "-m", "first")
+        git(dir, "mv", "old-name.txt", "new-name.txt")
+        git(dir, "rm", "gone.txt")
+        write(dir .. "/keep.txt", "changed\n")
+        vim.fn.mkdir(dir .. "/dir", "p")
+        write(dir .. "/dir/nested.txt", "new\n")
+        git(dir, "add", "-A")
+        git(dir, "commit", "-m", "Rework the files", "-m", "Explain the rework.", "-m", "Second paragraph.")
+
+        local opened = require("dagit").open({ cwd = dir, height = 16, log_args = { "--all" } })
+        assert.equal(true, opened)
+
+        local function mapped(want)
+            local wanted = vim.api.nvim_replace_termcodes(want, true, true, true)
+
+            for _, map in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
+                if map.lhs == want or map.lhs == wanted then
+                    return true
+                end
+            end
+
+            return false
+        end
+
+        assert.equal(true, mapped("<CR>"))
+        assert.equal(true, mapped("z"))
+        assert.equal(true, mapped("Z"))
+        assert.equal(false, mapped("<Space>"))
+
+        local function buffer_text()
+            return table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+        end
+
+        local function span_group(needle)
+            local namespace = vim.api.nvim_create_namespace("dagit")
+            local marks = vim.api.nvim_buf_get_extmarks(0, namespace, 0, -1, { details = true })
+
+            for _, mark in ipairs(marks) do
+                local details = mark[4]
+
+                if details and details.hl_group and details.end_col then
+                    local row = vim.api.nvim_buf_get_lines(0, mark[2], mark[2] + 1, false)[1] or ""
+                    local text = row:sub(mark[3] + 1, details.end_col)
+
+                    if text:find(needle, 1, true) then
+                        return details.hl_group
+                    end
+                end
+            end
+        end
+
+        local function move_to(pattern)
+            vim.fn.search(pattern, "w")
+            vim.api.nvim_exec_autocmds("CursorMoved", { buffer = vim.api.nvim_get_current_buf() })
+        end
+
+        assert.equal(true, require("dagit").expand())
+        local blob = buffer_text()
+        local explain = blob:find("Explain the rework.", 1, true)
+        local second = blob:find("Second paragraph.", 1, true)
+        local modified = blob:find("M keep.txt", 1, true)
+        local added = blob:find("A dir/nested.txt", 1, true)
+        local deleted = blob:find("D gone.txt", 1, true)
+        local renamed = blob:find("R old-name.txt -> new-name.txt", 1, true)
+
+        assert.truthy(explain)
+        assert.truthy(explain < second)
+        assert.truthy(second < modified)
+        assert.truthy(second < added)
+        assert.truthy(second < deleted)
+        assert.truthy(second < renamed)
+        assert.equal("DagitBody", span_group("Explain the rework."))
+        assert.equal("DagitFileModified", span_group("M keep.txt"))
+        assert.equal("DagitFileAdded", span_group("A dir/nested.txt"))
+        assert.equal("DagitFileDeleted", span_group("D gone.txt"))
+        assert.equal("DagitFileRenamed", span_group("R old-name.txt -> new-name.txt"))
+
+        local resolved = require("dagit._core.configuration").resolve()
+        assert.truthy(blob:find(resolved.symbols.vertical, 1, true) ~= nil)
+
+        local head = require("dagit").commit()
+        vim.cmd("normal! j")
+        vim.api.nvim_exec_autocmds("CursorMoved", { buffer = vim.api.nvim_get_current_buf() })
+        local lines = vim.api.nvim_buf_get_lines(0, 0, 2, false)
+        assert.truthy(vim.startswith(lines[1], "> "))
+        assert.truthy(lines[2]:find("  Explain the rework.", 1, true) ~= nil)
+        assert.equal(head.hash, require("dagit").commit().hash)
+
+        assert.equal(true, require("dagit").refresh())
+        assert.truthy(buffer_text():find("Explain the rework.", 1, true) ~= nil)
+
+        move_to(" first")
+        local older = require("dagit").commit()
+        assert.truthy(older)
+        assert.equal("first", older.subject)
+        assert.equal(true, require("dagit").expand())
+        assert.truthy(buffer_text():find("A gone.txt", 1, true) ~= nil)
+        assert.truthy(buffer_text():find("D gone.txt", 1, true) ~= nil)
+
+        assert.equal(true, require("dagit").expand())
+        assert.equal(nil, buffer_text():find("A gone.txt", 1, true))
+        assert.truthy(buffer_text():find("Explain the rework.", 1, true) ~= nil)
+
+        move_to("Rework the files")
+        assert.equal(true, require("dagit").expand())
+        assert.equal(nil, buffer_text():find("Explain the rework.", 1, true))
+
+        assert.equal(true, require("dagit").show())
+        assert.truthy(buffer_text():find("Explain the rework.", 1, true) ~= nil)
+        assert.equal(true, require("dagit").show())
+        assert.equal(nil, buffer_text():find("Explain the rework.", 1, true))
+        assert.equal(true, require("dagit").show())
+        assert.truthy(buffer_text():find("Explain the rework.", 1, true) ~= nil)
+
+        move_to(" first")
+        assert.equal(true, require("dagit").show())
+        assert.truthy(buffer_text():find("A gone.txt", 1, true) ~= nil)
+        assert.truthy(buffer_text():find("Explain the rework.", 1, true) ~= nil)
+
+        assert.equal(true, require("dagit").collapse())
+        assert.equal(nil, buffer_text():find("Explain the rework.", 1, true))
+        assert.equal(nil, buffer_text():find("A gone.txt", 1, true))
+        assert.equal("first", require("dagit").commit().subject)
+
         require("dagit").close()
     end)
 

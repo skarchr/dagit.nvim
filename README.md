@@ -1,6 +1,6 @@
 # dagit.nvim
 
-Git history in a horizontal split. Each row is a graph, an abbreviated hash, `(HEAD -> branch)`, and the subject. Tags, the author, and the date with its time stay on the right. The highlighted row has `>` on the left and the cursor-line background. The commit HEAD points at is drawn in bold. `<C-o>` copies the full hash. The caret is hidden in that window.
+Git history in a horizontal split. Each row is a graph, an abbreviated hash, `HEAD (branch)`, and the subject. When another branch leaves that same merge, the merged parent stays on the node and the other branch joins the line above it. Tags, the author, and the date with its time stay on the right. The highlighted row has `>` on the left and the cursor-line background. Opening the history places that highlight on the checked-out commit. The commit HEAD points at is drawn in bold. A commit that is not on any remote uses a different hash color. A branch that is not local is drawn in a muted lane color, and the text on those commits is muted the same way. `<C-o>` copies the full hash. The caret is hidden in that window.
 
 ## Requirements
 
@@ -60,7 +60,9 @@ In the history window:
 | `<C-o>` | Copy the full hash of the cursor row |
 | `r` | Reload the history |
 | `q` | Close the window |
-| `<CR>` | Call `on_select`, when you set it |
+| `<CR>` | Show or hide the commit description and files |
+| `z` | Show or hide the commit description and files |
+| `Z` | Hide every expanded commit |
 
 `<C-o>` is buffer-local, so the jump-list mapping is unchanged in other windows. Set a key to `false` to skip that default. `<Plug>` maps stay available:
 
@@ -69,7 +71,9 @@ vim.keymap.set("n", "<leader>gl", "<Plug>(DagitOpen)")
 vim.keymap.set("n", "<leader>gy", "<Plug>(DagitCopyHash)")
 ```
 
-`<Plug>(DagitRefresh)` and `<Plug>(DagitClose)` are mapped the same way.
+`<Plug>(DagitRefresh)`, `<Plug>(DagitClose)`, `<Plug>(DagitExpand)`, `<Plug>(DagitShow)`, and `<Plug>(DagitCollapse)` are mapped the same way.
+
+`<CR>` draws a block under the highlighted commit, and hides it again. The text is indented. More than five changed files start the block with a count, such as `3 added, 1 modified, 2 deleted`. The commit description comes next, when the commit has one. Each changed file is a line after that: `M`, `A`, `D`, or `R`, then the path. A rename is `R old -> new`. The graph lanes continue through the block, and `j` and `k` move through the lines. `z` toggles the block as well. `Z` hides every open block. On a commit that is not local, that block uses the same muted colors as the row.
 
 The commit under the cursor is available to other plugins:
 
@@ -78,7 +82,7 @@ local commit = require("dagit").commit()
 -- commit.hash, commit.parents, commit.subject, commit.refs, commit.author
 ```
 
-`on_select` is the hook for a later drilldown. It receives that same commit table:
+`on_select` runs on `<CR>` when `keymaps.expand` is not `<CR>`. It receives that same commit table:
 
 ```lua
 require("dagit").setup({
@@ -95,10 +99,10 @@ require("dagit").setup({
     height = 16,                 -- rows. 0 < height < 1 is a fraction of the screen
     split = "bottom",            -- "bottom" or "top"
     max_count = 256,
-    log_args = { "--all" },      -- passed to `git log`
+    log_args = { "--all" },      -- passed to `git log`. Stashes are left out.
     date_format = "%d %b %H:%M", -- os.date format, or "relative". A date-only format still gets HH:MM. Another year is shown; the current year is left off.
     author_max_width = 22,
-    ref_max_width = 28,          -- width of "(HEAD -> branch)" and of the tag
+    ref_max_width = 30,          -- width of "HEAD (branch)" and of the tag
     multi_tag_label = "multi tag", -- several tags collapse to this label
     dim_merges = true,           -- dim commits with more than one parent
     git_cmd = "git",
@@ -122,17 +126,22 @@ require("dagit").setup({
         branch_start = "",
         merge_right = "",
         merge_left = "",
+        diagonal_right = "╲",
+        diagonal_left = "╱",
     },
     keymaps = {
         copy_hash = "<C-o>",
         close = "q",
         refresh = "r",
+        expand = "<CR>",     -- toggle the description and files
+        show = "z",           -- toggle the description and files
+        collapse = "Z",       -- hide every expanded commit
     },
     on_select = nil,
 }
 ```
 
-History is loaded with `--date-order`, so a parent is not drawn before its children when two commits share a timestamp. Pass `--topo-order` or `--author-date-order` in `log_args` to pick a different order.
+History is loaded with `--date-order`, so a parent is not drawn before its children when two commits share a timestamp. Pass `--topo-order` or `--author-date-order` in `log_args` to pick a different order. `--all` skips `refs/stash`. Add `refs/stash` to `log_args` to show stashes.
 
 ## Highlight groups
 
@@ -142,14 +151,25 @@ Every group links to a colorscheme group until you define it yourself.
 | --- | --- | --- |
 | `DagitNormal` | `SnacksPickerList`, then `SnacksPicker`, then `NormalFloat` | history window background, same as the Snacks explorer |
 | `DagitHash` | `Label` | abbreviated commit hash |
+| `DagitHashLocal` | `DiagnosticWarn` | hash of a commit that is not on any remote |
+| `DagitUpstreamGone` | `DiagnosticError` | `(upstream gone)` after a local branch whose upstream ref is missing |
 | `DagitDecor` | `Delimiter` | parentheses and commas around refs |
-| `DagitHead` | bold, colorscheme foreground | `>` on the highlighted row, `HEAD ->`, and the HEAD subject |
+| `DagitHeadMark` | `Special` filled behind the history background | the word `HEAD` before `(branch)`, with a space on each side |
+| `DagitHead` | bold, colorscheme foreground | `>` on the highlighted row, and the HEAD subject |
 | `DagitCursor` | `blend=100` | hidden caret in the history window |
 | `DagitGraph1` … `DagitGraph8` | theme syntax groups | graph lanes, and the branch, remote, and HEAD names on that lane |
+| `DagitGraph1Muted` … `DagitGraph8Muted` | lane color, faded toward the background | branches that are not local |
+| `DagitTextMuted` | foreground, faded toward the background | subject on a commit that is not local. Hash, decoration, tag, author, and date use the `Muted` copy of their usual group |
 | `DagitMerge` | `Comment` | merge subjects |
 | `DagitAuthor` | `Comment` | author |
 | `DagitDate` | `NonText` | date and time |
 | `DagitRefTag` | `Constant` | tags |
+| `DagitBody` | `Comment` | commit description under an expanded row |
+| `DagitFileAdded` | `DiagnosticOk` | added file (`A`), green |
+| `DagitFileModified` | `DiagnosticWarn` | modified file (`M`), yellow |
+| `DagitFileDeleted` | `DiagnosticError` | deleted file (`D`), red |
+| `DagitFileRenamed` | `DiagnosticHint` | renamed or copied file (`R`, `C`), cyan |
+| `DagitBodyMuted`, `DagitFileAddedMuted`, `DagitFileModifiedMuted`, `DagitFileDeletedMuted`, `DagitFileRenamedMuted` | the group above, faded toward the background | description and file lines under a commit that is not local |
 
 ```lua
 vim.api.nvim_set_hl(0, "DagitRefHead", { link = "DiagnosticOk" })

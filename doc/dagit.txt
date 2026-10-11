@@ -16,21 +16,47 @@ CONTENTS                                                      *dagit-contents*
 
 dagit shows `git log` in a horizontal split. Each commit is one row:
 
-    > graph  hash (HEAD -> branch) subject    tag    author    date time
+    > graph  hash HEAD (branch) subject    tag    author    date time
 
 `>` marks the highlighted row, in addition to the |hl-CursorLine|
-background. Other rows leave that cell blank so the graph stays aligned.
-The row for the commit HEAD points at is bold, and its decoration is
-`(HEAD -> branch)`. Tags sit on the right, ahead of the author. Several
-tags on one commit collapse to one label. The hash uses |DagitHash|.
+background. The history opens on the checked-out commit. When that
+commit is not in the loaded log, the first row is highlighted.
+Other rows leave that cell blank so the graph stays aligned.
+The row for the commit HEAD points at is bold. Its decoration is
+`HEAD (branch)`. A detached HEAD is the badge alone. Tags sit on
+the right, ahead of the author. Several tags on one commit collapse
+to one label. The hash uses |DagitHash|.
+A commit that is not on any remote uses |DagitHashLocal|.
+A local branch whose upstream is gone shows `(upstream gone)` after
+the branch name, in |DagitUpstreamGone|.
+`<CR>` toggles a block under the highlighted commit. The text is
+indented. More than five changed files start the block with a count,
+such as `3 added, 1 modified, 2 deleted`. The commit description,
+when the commit has one, comes next. Each changed file follows on
+its own line: `M`, `A`, `D`, or `R`, then the path. A rename
+or a copy shows the old path, then the new path. The graph lanes
+continue through that block. `j` and `k` move through the lines.
+Press `<CR>` again to hide it. `z` toggles the block as well.
+`Z` hides every open block.
+
 The caret is hidden. The window background follows the Snacks explorer
 (`SnacksPickerList`, then `SnacksPicker`, then |hl-NormalFloat|).
 
 A commit in the middle of a lane is a circle with a line through it, so a
 straight history stays connected. A tip has the line below the circle, and
-a root has the line above it. Ghostty, Kitty, and Contour paint the default
+a root has the line above it. When another branch leaves that same merge,
+the merged parent stays on the node. The other branch joins the line above
+the node.
+Ghostty, Kitty, and Contour paint the default
 glyphs to the cell edge. Other terminals use Nerd Font circles. Override
-|dagit-symbols| to draw plain characters instead.
+|dagit-symbols| to draw plain characters instead. A branch that is not
+local uses the muted lane color |DagitGraph1Muted| through
+|DagitGraph8Muted|: the same lane color, faded toward the background.
+From the first commit that is also on a local branch, that lane uses
+the full color. The hash, subject, decoration, tag, author, and date
+on a commit that is not local use the same fade (|DagitTextMuted| for
+the subject). The description and file lines under that commit use
+the Muted copy of |DagitBody| and the file groups.
 
 The graph, subject, and metadata colors are linked to your colorscheme.
 Override the |dagit-highlights| groups to change them.
@@ -68,7 +94,12 @@ Buffer-local maps in the history window:
     <C-o>     Copy the full hash of the cursor row     *<Plug>(DagitCopyHash)*
     r         Reload the history                      *<Plug>(DagitRefresh)*
     q         Close the window                        *<Plug>(DagitClose)*
-    <CR>      Run |dagit-on_select| when it is set
+    <CR>      Show or hide the description and files  *<Plug>(DagitExpand)*
+    z         Show or hide the description and files  *<Plug>(DagitShow)*
+    Z         Hide every expanded commit              *<Plug>(DagitCollapse)*
+
+`<CR>` runs |dagit-on_select| when that callback is set and
+|dagit-keymaps| `expand` is not `<CR>`.
 
 <C-o> is local to the history buffer. The jump-list mapping is left alone
 in every other window.
@@ -120,6 +151,8 @@ log_args            string[] (default { "--all" })
                     not appended, when you override it.
                     `--date-order` is added unless you pass `--date-order`,
                     `--topo-order`, or `--author-date-order` yourself.
+                    `--all` skips `refs/stash`. Pass `refs/stash`
+                    to include stashes.
 
                                                          *dagit-date_format*
 date_format         string (default "%d %b %H:%M")
@@ -138,14 +171,15 @@ date_format         string (default "%d %b %H:%M")
 author_max_width    integer (default 22)
 
                                                          *dagit-ref_max_width*
-ref_max_width       integer (default 28)
+ref_max_width       integer (default 30)
                     Maximum display width of the
-                    `(HEAD -> branch)` decoration, including
-                    the parentheses, and of the tag on the
-                    right. Head and local branches are kept
-                    ahead of remotes. Names that do not fit
-                    are dropped from the end, then truncated.
-                    A tag is truncated to this width.
+                    `HEAD (branch)` decoration, including
+                    the badge and the parentheses, and of
+                    the tag on the right. Head and local
+                    branches are kept ahead of remotes.
+                    Names that do not fit are dropped from
+                    the end, then truncated. A tag is
+                    truncated to this width.
 
                                                       *dagit-multi_tag_label*
 multi_tag_label     string (default "multi tag")
@@ -194,6 +228,12 @@ symbols.horizontal        string
 symbols.branch_start      string
 symbols.merge_right       string
 symbols.merge_left        string
+symbols.diagonal_right    string
+                    Parent lane sloping down and to the right.
+                    Default `╲`.
+symbols.diagonal_left     string
+                    Parent lane sloping down and to the left.
+                    Default `╱`.
 
                     The four commit glyphs must be the same display width.
                     On Ghostty, Kitty, and Contour the defaults are the
@@ -208,14 +248,28 @@ symbols.merge_left        string
 keymaps.copy_hash   string or false (default "<C-o>")
 keymaps.close        string or false (default "q")
 keymaps.refresh     string or false (default "r")
+keymaps.expand      string or false (default "<CR>")
+                    Show or hide the description and the
+                    files under the cursor commit.
+keymaps.show        string or false (default "z")
+                    Show or hide that block. Same action as
+                    `keymaps.expand`.
+keymaps.collapse    string or false (default "Z")
+                    Hide the block under every commit.
 
                                                          *dagit-on_select*
 on_select           fun(commit: dagit.Commit) or nil
-                    Called when you press <CR> on a row. This is the
-                    extension point for commit drilldown. The commit table
+                    Called for `<CR>` when `keymaps.expand` is
+                    not `<CR>`. Use it for another action, such
+                    as opening a diff. The commit table
                     has `hash`, `parents`, `author`, `timestamp`, `subject`,
-                    and `refs`. Each ref has `name` and `kind`
-                    (`head`, `branch`, `remote`, or `tag`).
+                    `refs`, `local_only`, and `remote_only`. Each ref has
+                    `name`, `kind` (`head`, `branch`, `remote`, or `tag`),
+                    and `upstream_gone`. That is true when the local branch
+                    tracks a remote ref that no longer exists.
+                    `local_only` means no remote-tracking ref reaches the
+                    commit. `remote_only` means a remote-tracking ref
+                    reaches it and no local branch or HEAD does.
 
 Invalid configuration is ignored. dagit keeps working with the defaults
 and reports the problem from |:checkhealth| and |vim.notify()|.
@@ -229,15 +283,38 @@ a colorscheme, replaces the link.
     DagitGraph1 .. DagitGraph8    One color per graph lane. Branch,
                                   remote, and HEAD names on a commit
                                   use that commit's lane color.
+    DagitGraph1Muted .. DagitGraph8Muted
+                                  That lane, faded toward the
+                                  background, for a branch that is
+                                  not local. Defining the group
+                                  yourself keeps your color.
+    DagitTextMuted                Subject on a commit that is
+                                  not local. The hash, decoration,
+                                  tag, author, and date on that
+                                  row use the Muted copy of their
+                                  usual group.
     DagitHash                     Abbreviated commit hash    (Label)
+    DagitHashLocal                Hash of a commit that is not
+                                  on any remote   (DiagnosticWarn)
+    DagitUpstreamGone             "(upstream gone)" after a
+                                  local branch whose upstream
+                                  ref is missing
+                                  (DiagnosticError)
     DagitDecor                    Parentheses and commas     (Delimiter)
                                   around the ref list.
     DagitNormal                   History window background.
                                   SnacksPickerList, then
                                   SnacksPicker, then NormalFloat.
+    DagitHeadMark                 The word HEAD before
+                                  `(branch)`, with a space on
+                                  each side so the fill reads
+                                  as a badge. Another space
+                                  separates that badge from
+                                  the parenthesis. |Special|
+                                  fills the cells. The letters
+                                  use the history background.
     DagitHead                     Bold text. The ">" on the
-                                  highlighted row, the
-                                  "HEAD ->" label, and the
+                                  highlighted row, and the
                                   subject when that commit is
                                   HEAD and is not dimmed as
                                   a merge.
@@ -246,6 +323,16 @@ a colorscheme, replaces the link.
     DagitAuthor                   Author column              (Comment)
     DagitDate                     Date and time column       (NonText)
     DagitRefTag                   Tags                       (Constant)
+    DagitBody                     Commit description under
+                                  an expanded row            (Comment)
+    DagitFileAdded                Added file                 (DiagnosticOk)
+    DagitFileModified             Modified file              (DiagnosticWarn)
+    DagitFileDeleted              Deleted file               (DiagnosticError)
+    DagitFileRenamed              Renamed or copied file     (DiagnosticHint)
+    DagitBodyMuted                Description on a commit
+                                  that is not local. File
+                                  lines use the Muted copy of
+                                  their status group.
 
 The links are reapplied on |ColorScheme| only when you have not defined
 the group.
@@ -259,7 +346,8 @@ The Lua module is `dagit`. Modules under `dagit._core` are private.
         Store configuration. Returns the resolved config.
 
     require("dagit").open(opts)            *dagit.open()*
-        Open or focus the history split.
+        Open or focus the history split. A new history starts on
+        the checked-out commit.
         opts.cwd        directory inside the repository
         opts.log_args   replaces log_args for this open
         opts.max_count  overrides max_count for this open
@@ -270,6 +358,22 @@ The Lua module is `dagit`. Modules under `dagit._core` are private.
     require("dagit").copy_hash()           *dagit.copy_hash()*
         Copy the full hash under the cursor into the unnamed register,
         and into the `+` register when a clipboard provider exists.
+
+    require("dagit").expand()              *dagit.expand()*
+        Show or hide the description and files for the commit under
+        the cursor. The description is the commit body. More than
+        five changed files start with a count, such as `3 added,
+        1 deleted`. Each file is a status letter (`M`, `A`, `D`,
+        `R`, or `C`) and its path. A rename is `R old -> new`.
+        On a commit that is not local, those lines use the same
+        muted colors as the row.
+
+    require("dagit").show()                *dagit.show()*
+        Show or hide the description and files for the commit
+        under the cursor. Same action as |dagit.expand()|.
+
+    require("dagit").collapse()            *dagit.collapse()*
+        Hide the description and files under every commit.
 
     require("dagit").commit()              *dagit.commit()*
         The |dagit-on_select| commit under the cursor, or nil.

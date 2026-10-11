@@ -65,6 +65,27 @@ function M.copy_hash()
     return require("dagit._core.view").copy_hash()
 end
 
+--- Show or hide the description and files for the commit under the cursor.
+---
+---@return boolean
+function M.expand()
+    return require("dagit._core.view").expand()
+end
+
+--- Show or hide the description and files for the commit under the cursor.
+---
+---@return boolean
+function M.show()
+    return require("dagit._core.view").show()
+end
+
+--- Hide the description and files under every commit.
+---
+---@return boolean
+function M.collapse()
+    return require("dagit._core.view").collapse()
+end
+
 --- Run a `:Dagit` invocation.
 ---
 ---@param opts { fargs: string[] }

@@ -1,8 +1,11 @@
 :Dagit	dagit.txt	/*:Dagit*
 <Plug>(DagitClose)	dagit.txt	/*<Plug>(DagitClose)*
+<Plug>(DagitCollapse)	dagit.txt	/*<Plug>(DagitCollapse)*
 <Plug>(DagitCopyHash)	dagit.txt	/*<Plug>(DagitCopyHash)*
+<Plug>(DagitExpand)	dagit.txt	/*<Plug>(DagitExpand)*
 <Plug>(DagitOpen)	dagit.txt	/*<Plug>(DagitOpen)*
 <Plug>(DagitRefresh)	dagit.txt	/*<Plug>(DagitRefresh)*
+<Plug>(DagitShow)	dagit.txt	/*<Plug>(DagitShow)*
 dagit-api	dagit.txt	/*dagit-api*
 dagit-author_max_width	dagit.txt	/*dagit-author_max_width*
 dagit-commands	dagit.txt	/*dagit-commands*
@@ -27,9 +30,12 @@ dagit-ref_max_width	dagit.txt	/*dagit-ref_max_width*
 dagit-split	dagit.txt	/*dagit-split*
 dagit-symbols	dagit.txt	/*dagit-symbols*
 dagit.close()	dagit.txt	/*dagit.close()*
+dagit.collapse()	dagit.txt	/*dagit.collapse()*
 dagit.commit()	dagit.txt	/*dagit.commit()*
 dagit.copy_hash()	dagit.txt	/*dagit.copy_hash()*
+dagit.expand()	dagit.txt	/*dagit.expand()*
 dagit.open()	dagit.txt	/*dagit.open()*
 dagit.refresh()	dagit.txt	/*dagit.refresh()*
 dagit.setup()	dagit.txt	/*dagit.setup()*
+dagit.show()	dagit.txt	/*dagit.show()*
 dagit.txt	dagit.txt	/*dagit.txt*

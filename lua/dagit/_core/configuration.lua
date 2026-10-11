@@ -13,7 +13,7 @@ local defaults = {
     log_args = { "--all" },
     date_format = "%d %b %H:%M",
     author_max_width = 22,
-    ref_max_width = 28,
+    ref_max_width = 30,
     multi_tag_label = "multi tag",
     dim_merges = true,
     git_cmd = "git",
@@ -38,11 +38,16 @@ local defaults = {
         branch_start = "",
         merge_right = "",
         merge_left = "",
+        diagonal_right = "╲",
+        diagonal_left = "╱",
     },
     keymaps = {
         copy_hash = "<C-o>",
         close = "q",
         refresh = "r",
+        expand = "<CR>",
+        show = "z",
+        collapse = "Z",
     },
 }
 
@@ -63,6 +68,8 @@ local portable_symbols = {
     branch_start = "╮",
     merge_right = "╯",
     merge_left = "╰",
+    diagonal_right = "╲",
+    diagonal_left = "╱",
 }
 
 --- True when the outer terminal paints U+F5D0–U+F60D to the cell edge.
@@ -196,6 +203,8 @@ local function validate_symbols(issues, cfg)
         "branch_start",
         "merge_right",
         "merge_left",
+        "diagonal_right",
+        "diagonal_left",
     }
 
     for _, name in ipairs(names) do
@@ -251,7 +260,14 @@ local function validate_keymaps(issues, cfg)
         return
     end
 
-    local known = { copy_hash = true, close = true, refresh = true }
+    local known = {
+        copy_hash = true,
+        close = true,
+        refresh = true,
+        expand = true,
+        show = true,
+        collapse = true,
+    }
 
     for key, value in pairs(cfg.keymaps) do
         if not known[key] then

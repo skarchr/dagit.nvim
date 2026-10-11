@@ -31,3 +31,15 @@ end, { desc = "Close the git history" })
 vim.keymap.set("n", "<Plug>(DagitOpen)", function()
     require("dagit").open()
 end, { desc = "Open the git history" })
+
+vim.keymap.set("n", "<Plug>(DagitExpand)", function()
+    require("dagit").expand()
+end, { desc = "Show or hide the commit description and files" })
+
+vim.keymap.set("n", "<Plug>(DagitShow)", function()
+    require("dagit").show()
+end, { desc = "Show or hide the commit description and files" })
+
+vim.keymap.set("n", "<Plug>(DagitCollapse)", function()
+    require("dagit").collapse()
+end, { desc = "Hide every expanded commit" })

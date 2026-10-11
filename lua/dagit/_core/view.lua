@@ -17,7 +17,12 @@ local NAMESPACE = vim.api.nvim_create_namespace("dagit")
 ---@field commits dagit.Commit[]
 ---@field lines dagit.RenderedLine[]
 ---@field selected integer?
+---@field marked integer? Commit row that shows `>`.
 ---@field line_mark integer?
+---@field chevron_mark integer?
+---@field drawing boolean?
+---@field expanded table<string, boolean>
+---@field details table<string, dagit.CommitDetail>
 
 ---@type table<integer, dagit.ViewState>
 local states = {}
@@ -116,6 +121,15 @@ local function virt_chunks(line, selected)
     return chunks
 end
 
+--- `line_hl_group` covers an extmark range's background. The reversed
+--- HEAD badge is drawn again as overlay text, which keeps its own fill.
+---
+---@param group string
+---@return boolean
+local function is_head_mark(group)
+    return group:find("DagitHeadMark", 1, true) == 1
+end
+
 ---@param buf integer
 ---@param line dagit.RenderedLine
 ---@param row integer Zero-based line.
@@ -130,20 +144,40 @@ local function apply_line_marks(buf, line, row)
                 hl_mode = "combine",
             })
 
-            line.span_marks[#line.span_marks + 1] = {
+            local stored = {
                 id = id,
                 start = span.start,
                 stop = span.stop,
                 group = span.group,
             }
+
+            if is_head_mark(span.group) then
+                stored.overlay = vim.api.nvim_buf_set_extmark(buf, NAMESPACE, row, span.start, {
+                    virt_text = { { line.text:sub(span.start + 1, span.stop), span.group } },
+                    virt_text_pos = "overlay",
+                    hl_mode = "replace",
+                    priority = 65535,
+                })
+            end
+
+            line.span_marks[#line.span_marks + 1] = stored
         end
     end
 
-    line.virt_mark = vim.api.nvim_buf_set_extmark(buf, NAMESPACE, row, 0, {
-        virt_text = virt_chunks(line, false),
-        virt_text_pos = "right_align",
-        hl_mode = "combine",
-    })
+    if #line.virt > 0 then
+        line.virt_mark = vim.api.nvim_buf_set_extmark(buf, NAMESPACE, row, 0, {
+            virt_text = virt_chunks(line, false),
+            virt_text_pos = "right_align",
+            hl_mode = "combine",
+        })
+    end
+
+    if line.above_lines and #line.above_lines > 0 then
+        vim.api.nvim_buf_set_extmark(buf, NAMESPACE, row, 0, {
+            virt_lines = line.above_lines,
+            virt_lines_above = true,
+        })
+    end
 end
 
 ---@param state dagit.ViewState
@@ -165,6 +199,16 @@ local function paint_row(state, row, selected)
             hl_group = group,
             hl_mode = "combine",
         })
+
+        if span.overlay then
+            vim.api.nvim_buf_set_extmark(state.buf, NAMESPACE, row - 1, span.start, {
+                id = span.overlay,
+                virt_text = { { line.text:sub(span.start + 1, span.stop), span.group } },
+                virt_text_pos = "overlay",
+                hl_mode = "replace",
+                priority = 65535,
+            })
+        end
     end
 
     if line.virt_mark then
@@ -199,15 +243,52 @@ local function write_marker(state, row, glyph)
     vim.api.nvim_buf_clear_namespace(state.buf, NAMESPACE, row - 1, row)
     line.virt_mark = nil
     line.span_marks = nil
+
+    if state.marked == row then
+        state.chevron_mark = nil
+    end
+
     apply_line_marks(state.buf, line, row - 1)
+end
+
+--- Commit rows, with the open description and file list under each one.
+---
+---@param state dagit.ViewState
+---@param config dagit.Config
+---@return dagit.RenderedLine[]
+local function compose(state, config)
+    local commits = render.build(state.commits, config)
+    local lines = {}
+
+    state.expanded = state.expanded or {}
+    state.details = state.details or {}
+
+    for index, line in ipairs(commits) do
+        line.kind = "commit"
+        lines[#lines + 1] = line
+
+        local commit = state.commits[index]
+        local detail = commit and state.expanded[commit.hash] and state.details[commit.hash]
+
+        if detail then
+            for _, extra in ipairs(render.detail_lines(line, detail)) do
+                lines[#lines + 1] = extra
+            end
+        end
+    end
+
+    return lines
 end
 
 ---@param state dagit.ViewState
 local function draw(state)
     local config = configuration.resolve()
-    state.lines = render.build(state.commits, config)
+    state.lines = compose(state, config)
     state.selected = nil
+    state.marked = nil
     state.line_mark = nil
+    state.chevron_mark = nil
+    state.drawing = true
 
     local texts = {}
 
@@ -228,6 +309,61 @@ local function draw(state)
     for index, line in ipairs(state.lines) do
         apply_line_marks(state.buf, line, index - 1)
     end
+
+    state.drawing = false
+end
+
+--- Buffer row of the commit that owns `row`. Detail rows belong to the commit above them.
+---
+---@param state dagit.ViewState
+---@param row integer
+---@return integer?
+local function owner_row(state, row)
+    local line = state.lines[row]
+
+    if not line then
+        return nil
+    end
+
+    if line.kind ~= "detail" then
+        return row
+    end
+
+    for index = row - 1, 1, -1 do
+        local candidate = state.lines[index]
+
+        if candidate and candidate.kind ~= "detail" and candidate.commit_index == line.commit_index then
+            return index
+        end
+    end
+end
+
+--- Bold `>` on the commit row. On the cursor row it also takes the cursor background.
+---
+---@param state dagit.ViewState
+---@param row integer
+---@param on_cursor boolean
+local function show_chevron(state, row, on_cursor)
+    local group = on_cursor and highlights.line_group("DagitHead") or "DagitHead"
+    local opts = {
+        end_col = 1,
+        hl_group = group,
+        hl_mode = "combine",
+        priority = 20,
+    }
+
+    if state.chevron_mark then
+        opts.id = state.chevron_mark
+    end
+
+    local ok, id = pcall(vim.api.nvim_buf_set_extmark, state.buf, NAMESPACE, row - 1, 0, opts)
+
+    if not ok then
+        opts.id = nil
+        id = vim.api.nvim_buf_set_extmark(state.buf, NAMESPACE, row - 1, 0, opts)
+    end
+
+    state.chevron_mark = id
 end
 
 ---@param state dagit.ViewState
@@ -239,24 +375,40 @@ local function select_row(state, row)
         return
     end
 
-    if state.selected then
-        write_marker(state, state.selected, " ")
+    local owner = owner_row(state, row)
+
+    if not owner then
+        return
+    end
+
+    if state.line_mark then
+        pcall(vim.api.nvim_buf_del_extmark, state.buf, NAMESPACE, state.line_mark)
+        state.line_mark = nil
+    end
+
+    if state.selected and state.selected ~= row then
         paint_row(state, state.selected, false)
     end
 
-    -- Repaint the row with CursorLine's background. Virtual text is not
+    -- Repaint the cursor row with CursorLine's background. Virtual text is not
     -- covered by the window's cursorline, so the gaps would stay dark.
     highlights.selection()
-    write_marker(state, row, ">")
-    paint_row(state, row, true)
 
-    -- `>` sits in the buffer. This highlight makes it bold on the cursor row.
-    vim.api.nvim_buf_set_extmark(state.buf, NAMESPACE, row - 1, 0, {
-        end_col = 1,
-        hl_group = highlights.line_group("DagitHead"),
-        hl_mode = "combine",
-        priority = 20,
-    })
+    if state.marked ~= owner then
+        if state.marked then
+            write_marker(state, state.marked, " ")
+            paint_row(state, state.marked, false)
+        end
+
+        write_marker(state, owner, ">")
+        state.marked = owner
+        state.chevron_mark = nil
+    elseif state.selected == owner and owner ~= row then
+        paint_row(state, owner, false)
+    end
+
+    paint_row(state, row, true)
+    show_chevron(state, owner, owner == row)
 
     state.line_mark = vim.api.nvim_buf_set_extmark(state.buf, NAMESPACE, row - 1, 0, {
         line_hl_group = "CursorLine",
@@ -270,7 +422,7 @@ end
 local function on_cursor_moved(buf)
     local state = state_of(buf)
 
-    if not state then
+    if not state or state.drawing then
         return
     end
 
@@ -326,6 +478,18 @@ local function apply_keymaps(buf)
     buffer_map(buf, config.keymaps.refresh, function()
         require("dagit").refresh()
     end, "Reload the git history")
+
+    buffer_map(buf, config.keymaps.expand, function()
+        require("dagit").expand()
+    end, "Show or hide the commit description and files")
+
+    buffer_map(buf, config.keymaps.show, function()
+        require("dagit").show()
+    end, "Show or hide the commit description and files")
+
+    buffer_map(buf, config.keymaps.collapse, function()
+        require("dagit").collapse()
+    end, "Hide every expanded commit")
 
     if config.on_select then
         buffer_map(buf, "<CR>", function()
@@ -388,9 +552,63 @@ local function apply_window_options(win, height)
     }, ",")
 end
 
+--- One-based row of the commit that is checked out.
+--- The first row is used when that commit is outside the loaded log.
+---
+---@param commits dagit.Commit[]
+---@return integer
+local function checked_out_row(commits)
+    for index, commit in ipairs(commits) do
+        for _, ref in ipairs(commit.refs) do
+            if ref.kind == "head" then
+                return index
+            end
+        end
+    end
+
+    return 1
+end
+
+--- Buffer row of a commit index. Skips description and file rows.
+---
 ---@param state dagit.ViewState
+---@param commit_index integer
+---@return integer
+local function commit_buffer_row(state, commit_index)
+    for index, line in ipairs(state.lines) do
+        if line.kind ~= "detail" and line.commit_index == commit_index then
+            return index
+        end
+    end
+
+    return 1
+end
+
+--- Buffer row of the commit with `hash`, or nil when it is not loaded.
+---
+---@param state dagit.ViewState
+---@param hash string?
+---@return integer?
+local function hash_buffer_row(state, hash)
+    if not hash then
+        return nil
+    end
+
+    for index, line in ipairs(state.lines) do
+        if line.kind ~= "detail" then
+            local commit = state.commits[line.commit_index]
+
+            if commit and commit.hash == hash then
+                return index
+            end
+        end
+    end
+end
+
+---@param state dagit.ViewState
+---@param at_head boolean? Place the highlight on the checked-out commit.
 ---@return boolean
-local function reload(state)
+local function reload(state, at_head)
     local commits, err = git.log(configuration.resolve().git_cmd, state.cwd, state.log_args, state.max_count)
 
     if not commits then
@@ -406,14 +624,30 @@ local function reload(state)
         return false
     end
 
+    local win = vim.fn.bufwinid(state.buf)
+    local keep_hash
+
+    if win ~= -1 and not at_head then
+        local cursor = vim.api.nvim_win_get_cursor(win)[1]
+        local current = state.lines[cursor]
+        local current_commit = current and state.commits[current.commit_index]
+
+        keep_hash = current_commit and current_commit.hash
+    end
+
     state.commits = commits
     draw(state)
 
-    local win = vim.fn.bufwinid(state.buf)
-
     if win ~= -1 and #state.lines > 0 then
-        local cursor = vim.api.nvim_win_get_cursor(win)
-        local row = math.min(cursor[1], #state.lines)
+        local row
+
+        if at_head then
+            row = commit_buffer_row(state, checked_out_row(state.commits))
+        else
+            row = hash_buffer_row(state, keep_hash) or vim.api.nvim_win_get_cursor(win)[1]
+        end
+
+        row = math.max(1, math.min(row, #state.lines))
         vim.api.nvim_win_set_cursor(win, { row, 0 })
         select_row(state, row)
     end
@@ -462,7 +696,7 @@ function M.open(opts)
             state.log_args = opts.log_args or state.log_args
             state.max_count = opts.max_count or state.max_count
 
-            return reload(state)
+            return reload(state, true)
         end
 
         return true
@@ -529,11 +763,13 @@ function M.open(opts)
         max_count = max_count,
         commits = {},
         lines = {},
+        expanded = {},
+        details = {},
     }
 
     hide_cursor()
 
-    return reload(states[existing_buf])
+    return reload(states[existing_buf], true)
 end
 
 --- Close the history window.
@@ -583,8 +819,170 @@ function M.commit()
     end
 
     local row = vim.api.nvim_win_get_cursor(win)[1]
+    local line = states[buf].lines[row]
 
-    return states[buf].commits[row]
+    if not line then
+        return nil
+    end
+
+    return states[buf].commits[line.commit_index]
+end
+
+--- History state when the cursor is inside the history window.
+---
+--- A missing window warns. Another buffer returns nil without a warning.
+---
+---@return dagit.ViewState? state
+---@return integer? win
+local function active_state()
+    local buf, win = find_window()
+
+    if not buf or not win or not states[buf] then
+        notify("Git history is not open", vim.log.levels.WARN)
+
+        return nil
+    end
+
+    if vim.api.nvim_get_current_buf() ~= buf then
+        return nil
+    end
+
+    return states[buf], win
+end
+
+--- Commit that owns the cursor row.
+---
+---@param state dagit.ViewState
+---@param win integer
+---@return dagit.Commit?
+local function commit_at_cursor(state, win)
+    local row = vim.api.nvim_win_get_cursor(win)[1]
+    local line = state.lines[row]
+
+    return line and state.commits[line.commit_index]
+end
+
+--- Read the description and files once per hash.
+---
+---@param state dagit.ViewState
+---@param hash string
+---@return dagit.CommitDetail?
+local function load_detail(state, hash)
+    local detail = state.details[hash]
+
+    if detail then
+        return detail
+    end
+
+    local fetched, err = git.changes(configuration.resolve().git_cmd, state.cwd, hash)
+
+    if not fetched then
+        notify(err or "Could not read the commit", vim.log.levels.ERROR)
+
+        return nil
+    end
+
+    state.details[hash] = fetched
+
+    return fetched
+end
+
+--- Redraw and leave the cursor on the commit row for `hash`.
+---
+---@param state dagit.ViewState
+---@param win integer
+---@param hash string?
+local function reveal(state, win, hash)
+    draw(state)
+
+    local focus = hash_buffer_row(state, hash) or 1
+
+    vim.api.nvim_win_set_cursor(win, { focus, 0 })
+    select_row(state, focus)
+end
+
+--- Open the description and files for `hash` when they are not already open.
+---
+---@param state dagit.ViewState
+---@param win integer
+---@param hash string
+---@return boolean
+local function open_hash(state, win, hash)
+    if state.expanded[hash] then
+        return true
+    end
+
+    local detail = load_detail(state, hash)
+
+    if not detail then
+        return false
+    end
+
+    if #detail.body == 0 and #detail.files == 0 then
+        return true
+    end
+
+    state.expanded[hash] = true
+    reveal(state, win, hash)
+
+    return true
+end
+
+--- Show or hide the description and files under the cursor commit.
+---
+---@return boolean
+function M.expand()
+    local state, win = active_state()
+
+    if not state or not win then
+        return false
+    end
+
+    local commit = commit_at_cursor(state, win)
+
+    if not commit then
+        notify("No commit under the cursor", vim.log.levels.WARN)
+
+        return false
+    end
+
+    if state.expanded[commit.hash] then
+        state.expanded[commit.hash] = nil
+        reveal(state, win, commit.hash)
+
+        return true
+    end
+
+    return open_hash(state, win, commit.hash)
+end
+
+--- Show or hide the description and files under the cursor commit.
+---
+---@return boolean
+function M.show()
+    return M.expand()
+end
+
+--- Hide the description and files under every commit.
+---
+---@return boolean
+function M.collapse()
+    local state, win = active_state()
+
+    if not state or not win then
+        return false
+    end
+
+    if not next(state.expanded) then
+        return true
+    end
+
+    local commit = commit_at_cursor(state, win)
+
+    state.expanded = {}
+    reveal(state, win, commit and commit.hash)
+
+    return true
 end
 
 --- Copy the full hash of the commit under the cursor.

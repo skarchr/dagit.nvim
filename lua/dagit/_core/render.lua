@@ -1,6 +1,6 @@
 --- Turn commits into buffer lines and highlight spans.
 ---
---- Each row is `  graph hash (HEAD -> branch) subject`. The first cell is a
+--- Each row is `  graph hash HEAD (branch) subject`. The first cell is a
 --- blank the view replaces with `>` on the highlighted row. Tags, the author,
 --- and the date stay right-aligned so they pin to the window edge.
 
@@ -25,8 +25,14 @@ local M = {}
 ---@field spans dagit.HighlightSpan[]
 ---@field virt dagit.VirtChunk[]
 ---@field virt_mark integer?
----@field span_marks { id: integer, start: integer, stop: integer, group: string }[]?
+---@field span_marks { id: integer, start: integer, stop: integer, group: string, overlay: integer? }[]?
+---@field detail_mark integer?
 ---@field commit_index integer
+---@field kind "commit" | "detail"?
+---@field graph_below string Marker column, continuing lanes, and the gap before the text.
+---@field graph_below_spans dagit.HighlightSpan[]
+---@field above_lines? string[][][] Virt lines above a commit where a branch joins the line.
+---@field remote_only boolean? Commit is not on a local branch. Detail text is muted.
 
 --- True when an |os.date()| format already prints a clock.
 ---
@@ -203,6 +209,19 @@ local MARK = "  "
 -- Shown in the row. `<C-o>` still copies the full hash.
 local HASH_LENGTH = 7
 
+---@param color integer
+---@param muted boolean?
+---@return string
+local function graph_group(color, muted)
+    local name = "DagitGraph" .. color
+
+    if muted then
+        return name .. "Muted"
+    end
+
+    return name
+end
+
 ---@param commit dagit.Commit
 ---@return boolean
 local function is_head(commit)
@@ -213,6 +232,19 @@ local function is_head(commit)
     end
 
     return false
+end
+
+--- Fade a text group on a commit that is not on a local branch.
+---
+---@param group string
+---@param remote boolean
+---@return string
+local function quiet(group, remote)
+    if remote and group ~= "DagitHead" and group ~= "DagitHeadMark" and group ~= "DagitUpstreamGone" and not group:find("Muted$") then
+        return group .. "Muted"
+    end
+
+    return group
 end
 
 ---@param group string
@@ -237,7 +269,13 @@ local function short_hash(hash)
     return hash:sub(1, HASH_LENGTH)
 end
 
---- Lower sorts first inside `(HEAD -> branch)`.
+--- Shown after a local branch whose upstream ref no longer exists.
+local UPSTREAM_GONE = " (upstream gone)"
+
+-- One space on each side of the word, so the reversed fill reads as a badge.
+local HEAD_MARK = " HEAD "
+
+--- Lower sorts first inside `HEAD (branch)`.
 local REF_PRIORITY = {
     head = 1,
     branch = 2,
@@ -263,11 +301,13 @@ local function decorate(name, kind, icons)
     return icon .. name, REF_GROUP[kind] or "DagitRefBranch"
 end
 
---- `(HEAD -> branch, …)` pieces that fit in `config.ref_max_width`.
+--- `HEAD (branch, …)` pieces that fit in `config.ref_max_width`.
 ---
 --- Tags are drawn on the right, not here. Head, local branches, and remotes
---- are kept in that order. Names that do not fit are dropped from the end
---- and then truncated. The parentheses count toward the width.
+--- are kept in that order. The HEAD badge sits in front of the parentheses.
+--- A detached HEAD is the badge alone. Names that do not fit are dropped
+--- from the end and then truncated. The badge and the parentheses count
+--- toward the width.
 ---
 ---@param refs dagit.Ref[]
 ---@param config dagit.Config
@@ -292,36 +332,83 @@ function M.decoration(refs, config)
         return left.index < right.index
     end)
 
-    ---@type { text: string, group: string, kind: string, name: string }[]
+    ---@type { text: string, group: string, kind: string, name: string, upstream_gone: boolean }[]
     local items = {}
 
     for _, entry in ipairs(primary) do
         local text, group = decorate(entry.ref.name, entry.ref.kind, config.icons)
-        items[#items + 1] = { text = text, group = group, kind = entry.ref.kind, name = entry.ref.name }
+        items[#items + 1] = {
+            text = text,
+            group = group,
+            kind = entry.ref.kind,
+            name = entry.ref.name,
+            upstream_gone = entry.ref.upstream_gone == true,
+        }
     end
 
     if #items == 0 then
         return {}
     end
 
-    local function pointer(item)
-        return item.kind == "head" and item.name ~= "HEAD"
+    local function detached(item)
+        return item.kind == "head" and item.name == "HEAD"
+    end
+
+    --- Names drawn inside the parentheses. Detached HEAD has none.
+    ---
+    ---@param list { text: string, upstream_gone: boolean, kind: string, name: string }[]
+    ---@return { text: string, group: string, kind: string, name: string, upstream_gone: boolean }[]
+    local function names_of(list)
+        local names = {}
+
+        for _, item in ipairs(list) do
+            if not detached(item) then
+                names[#names + 1] = item
+            end
+        end
+
+        return names
+    end
+
+    local function has_badge(list)
+        for _, item in ipairs(list) do
+            if item.kind == "head" then
+                return true
+            end
+        end
+
+        return false
     end
 
     local function measure(list)
-        -- Parentheses, plus ", " between names, plus "HEAD -> " on the branch HEAD points at.
-        local width = 2
+        local names = names_of(list)
+        local width = 0
 
-        for index, item in ipairs(list) do
+        if has_badge(list) then
+            width = width + #HEAD_MARK
+        end
+
+        if #names == 0 then
+            return width
+        end
+
+        -- Space after the badge, parentheses, and ", " between names.
+        width = width + 2
+
+        if has_badge(list) then
+            width = width + 1
+        end
+
+        for index, item in ipairs(names) do
             if index > 1 then
                 width = width + 2
             end
 
-            if pointer(item) then
-                width = width + #"HEAD -> "
-            end
-
             width = width + vim.api.nvim_strwidth(item.text)
+
+            if item.upstream_gone then
+                width = width + vim.api.nvim_strwidth(UPSTREAM_GONE)
+            end
         end
 
         return width
@@ -331,26 +418,43 @@ function M.decoration(refs, config)
         table.remove(items)
     end
 
+    local names = names_of(items)
     local overflow = measure(items) - config.ref_max_width
 
-    if overflow > 0 then
-        local last = items[#items]
+    if overflow > 0 and #names > 0 then
+        local last = names[#names]
         local allowed = math.max(1, vim.api.nvim_strwidth(last.text) - overflow)
         last.text = M.truncate(last.text, allowed)
     end
 
-    local pieces = { { text = "(", group = "DagitDecor" } }
+    local pieces = {}
 
-    for index, item in ipairs(items) do
+    if has_badge(items) then
+        pieces[#pieces + 1] = { text = HEAD_MARK, group = "DagitHeadMark" }
+    end
+
+    if #names == 0 then
+        return pieces
+    end
+
+    local open = "("
+
+    if has_badge(items) then
+        open = " ("
+    end
+
+    pieces[#pieces + 1] = { text = open, group = "DagitDecor" }
+
+    for index, item in ipairs(names) do
         if index > 1 then
             pieces[#pieces + 1] = { text = ", ", group = "DagitDecor" }
         end
 
-        if pointer(item) then
-            pieces[#pieces + 1] = { text = "HEAD -> ", group = "DagitHead" }
-        end
-
         pieces[#pieces + 1] = { text = item.text, group = item.group }
+
+        if item.upstream_gone then
+            pieces[#pieces + 1] = { text = UPSTREAM_GONE, group = "DagitUpstreamGone" }
+        end
     end
 
     pieces[#pieces + 1] = { text = ")", group = "DagitDecor" }
@@ -398,6 +502,10 @@ function M.build(commits, config)
 
     for _, row in ipairs(layout) do
         graph_width = math.max(graph_width, vim.api.nvim_strwidth(row.text))
+
+        for _, connector in ipairs(row.above or {}) do
+            graph_width = math.max(graph_width, vim.api.nvim_strwidth(connector.text))
+        end
     end
 
     local dates = {}
@@ -440,33 +548,40 @@ function M.build(commits, config)
         text = text .. hash_text
 
         local spans = {}
+        local remote = commit.remote_only == true
+        local hash_group = commit.local_only and "DagitHashLocal" or "DagitHash"
 
         spans[#spans + 1] = {
             start = hash_start,
             stop = #text,
-            group = marked("DagitHash", head),
+            group = marked(quiet(hash_group, remote), head),
         }
 
         for _, span in ipairs(row.spans) do
             spans[#spans + 1] = {
                 start = span.start + #MARK,
                 stop = span.stop + #MARK,
-                group = marked("DagitGraph" .. span.color, head),
+                group = marked(graph_group(span.color, span.muted), head),
             }
         end
 
         -- The branch name uses the lane color, so it matches the graph.
-        local lane_group = "DagitGraph" .. row.color
+        local lane_group = graph_group(row.color, row.muted)
         local pieces = M.decoration(commit.refs, config)
 
         if #pieces > 0 then
             text = text .. " "
 
             for _, piece in ipairs(pieces) do
-                local fixed = piece.group == "DagitHead" or piece.group == "DagitDecor"
+                local fixed = piece.group == "DagitHead"
+                    or piece.group == "DagitHeadMark"
+                    or piece.group == "DagitDecor"
+                    or piece.group == "DagitUpstreamGone"
 
                 if not fixed then
                     piece.group = lane_group
+                else
+                    piece.group = quiet(piece.group, remote)
                 end
 
                 local start = #text
@@ -489,13 +604,19 @@ function M.build(commits, config)
             spans[#spans + 1] = {
                 start = subject_start,
                 stop = #text,
-                group = marked("DagitMerge", head),
+                group = marked(quiet("DagitMerge", remote), head),
             }
         elseif head then
             spans[#spans + 1] = {
                 start = subject_start,
                 stop = #text,
                 group = "DagitHead",
+            }
+        elseif remote then
+            spans[#spans + 1] = {
+                start = subject_start,
+                stop = #text,
+                group = "DagitTextMuted",
             }
         end
 
@@ -511,28 +632,322 @@ function M.build(commits, config)
             end
 
             if label then
-                virt[#virt + 1] = { text = label.text, group = marked(label.group, head) }
+                virt[#virt + 1] = { text = label.text, group = marked(quiet(label.group, remote), head) }
             end
 
             virt[#virt + 1] = { text = "  ", group = "DagitPad" }
         end
 
-        virt[#virt + 1] = { text = pad(authors[index], author_width, "left"), group = marked("DagitAuthor", head) }
+        virt[#virt + 1] = {
+            text = pad(authors[index], author_width, "left"),
+            group = marked(quiet("DagitAuthor", remote), head),
+        }
         virt[#virt + 1] = { text = "  ", group = "DagitPad" }
-        virt[#virt + 1] = { text = pad(dates[index], date_width, "right"), group = marked("DagitDate", head) }
+        virt[#virt + 1] = {
+            text = pad(dates[index], date_width, "right"),
+            group = marked(quiet("DagitDate", remote), head),
+        }
+
+        local below_pad = math.max(0, graph_width - vim.api.nvim_strwidth(row.below))
+        local graph_below = MARK .. row.below .. string.rep(" ", below_pad)
+        local below_spans = {}
+
+        for _, span in ipairs(row.below_spans) do
+            below_spans[#below_spans + 1] = {
+                start = span.start + #MARK,
+                stop = span.stop + #MARK,
+                group = graph_group(span.color, span.muted),
+            }
+        end
+
+        if graph_text ~= "" then
+            graph_below = graph_below .. " "
+        end
+
+        local above_lines = nil
+
+        if row.above and #row.above > 0 then
+            above_lines = {}
+
+            for _, connector in ipairs(row.above) do
+                local padded = connector.text .. string.rep(" ", graph_width - vim.api.nvim_strwidth(connector.text))
+                local chunks = { { MARK, "DagitPad" } }
+                local cursor = 0
+
+                for _, span in ipairs(connector.spans) do
+                    if span.start > cursor then
+                        chunks[#chunks + 1] = { padded:sub(cursor + 1, span.start), "DagitPad" }
+                    end
+
+                    chunks[#chunks + 1] = {
+                        padded:sub(span.start + 1, span.stop),
+                        graph_group(span.color, span.muted),
+                    }
+                    cursor = span.stop
+                end
+
+                if cursor < #padded then
+                    chunks[#chunks + 1] = { padded:sub(cursor + 1), "DagitPad" }
+                end
+
+                above_lines[#above_lines + 1] = chunks
+            end
+        end
 
         lines[index] = {
             text = text,
             node_start = row.node_start + #MARK,
             node_length = row.node_length,
-            node_group = marked("DagitGraph" .. row.color, head),
+            node_group = marked(graph_group(row.color, row.muted), head),
             spans = spans,
             virt = virt,
             commit_index = index,
+            graph_below = graph_below,
+            graph_below_spans = below_spans,
+            above_lines = above_lines,
+            remote_only = remote,
         }
     end
 
     return lines
+end
+
+local FILE_GROUP = {
+    A = "DagitFileAdded",
+    M = "DagitFileModified",
+    D = "DagitFileDeleted",
+    R = "DagitFileRenamed",
+    C = "DagitFileRenamed",
+    T = "DagitFileModified",
+}
+
+--- `M path`, or `R old -> new` when Git recorded a rename or a copy.
+---
+---@param file dagit.CommitFile
+---@return string
+function M.file_text(file)
+    local status = file.status or "?"
+
+    if file.old_path and file.old_path ~= "" and file.old_path ~= file.path then
+        return status .. " " .. file.old_path .. " -> " .. file.path
+    end
+
+    return status .. " " .. file.path
+end
+
+--- Spaces before the description and the file paths. The graph stays put.
+local DETAIL_INDENT = "  "
+
+--- File-count words, in the order the summary prints them.
+local FILE_SUMMARY = {
+    { status = "A", label = "added", group = "DagitFileAdded" },
+    { status = "M", label = "modified", group = "DagitFileModified" },
+    { status = "R", label = "renamed", group = "DagitFileRenamed" },
+    { status = "D", label = "deleted", group = "DagitFileDeleted" },
+    { status = "C", label = "copied", group = "DagitFileRenamed" },
+    { status = "T", label = "type changed", group = "DagitFileModified" },
+}
+
+--- `3 added, 1 modified` when a commit changes more than five files.
+---
+--- Zero counts are left out. The parts keep the status color.
+---
+---@param files dagit.CommitFile[]
+---@return string[][]?
+function M.file_summary(files)
+    if #files <= 5 then
+        return nil
+    end
+
+    local known = {}
+
+    for _, item in ipairs(FILE_SUMMARY) do
+        known[item.status] = true
+    end
+
+    local counts = {}
+    local other = 0
+
+    for _, file in ipairs(files) do
+        local status = file.status or "?"
+
+        if known[status] then
+            counts[status] = (counts[status] or 0) + 1
+        else
+            other = other + 1
+        end
+    end
+
+    local parts = {}
+
+    local function add(text, group)
+        if #parts > 0 then
+            parts[#parts + 1] = { ", ", "DagitBody" }
+        end
+
+        parts[#parts + 1] = { text, group }
+    end
+
+    for _, item in ipairs(FILE_SUMMARY) do
+        local count = counts[item.status] or 0
+
+        if count > 0 then
+            add(count .. " " .. item.label, item.group)
+        end
+    end
+
+    if other > 0 then
+        add(other .. " changed", "DagitFileModified")
+    end
+
+    if #parts == 0 then
+        return nil
+    end
+
+    return parts
+end
+
+--- Virtual lines under an expanded commit.
+---
+--- More than five files start with a count. The description comes next.
+--- File rows follow, colored by status. A commit that is not local uses
+--- the muted copy of those colors. Each line repeats the graph lanes
+--- that continue past the commit, then the indent.
+---
+---@param line dagit.RenderedLine
+---@param detail dagit.CommitDetail
+---@return string[][]
+function M.detail_virt_lines(line, detail)
+    local prefix = {}
+    local text = line.graph_below or ""
+    local cursor = 0
+
+    for _, span in ipairs(line.graph_below_spans or {}) do
+        if span.start > cursor then
+            prefix[#prefix + 1] = { text:sub(cursor + 1, span.start), "DagitPad" }
+        end
+
+        prefix[#prefix + 1] = { text:sub(span.start + 1, span.stop), span.group }
+        cursor = span.stop
+    end
+
+    if cursor < #text then
+        prefix[#prefix + 1] = { text:sub(cursor + 1), "DagitPad" }
+    end
+
+    local function row(content, group)
+        local chunks = {}
+
+        for _, chunk in ipairs(prefix) do
+            chunks[#chunks + 1] = { chunk[1], chunk[2] }
+        end
+
+        if content ~= "" then
+            chunks[#chunks + 1] = { DETAIL_INDENT .. content, group }
+        end
+
+        return chunks
+    end
+
+    local function row_parts(parts)
+        local chunks = {}
+
+        for _, chunk in ipairs(prefix) do
+            chunks[#chunks + 1] = { chunk[1], chunk[2] }
+        end
+
+        for index, part in ipairs(parts) do
+            local text = part[1]
+
+            if index == 1 then
+                text = DETAIL_INDENT .. text
+            end
+
+            chunks[#chunks + 1] = { text, part[2] }
+        end
+
+        return chunks
+    end
+
+    local virt_lines = {}
+    local body = detail.body or {}
+    local files = detail.files or {}
+    local summary = M.file_summary(files)
+    local remote = line.remote_only == true
+
+    local function tone(group)
+        return quiet(group, remote)
+    end
+
+    if summary then
+        local parts = {}
+
+        for _, part in ipairs(summary) do
+            parts[#parts + 1] = { part[1], tone(part[2]) }
+        end
+
+        virt_lines[#virt_lines + 1] = row_parts(parts)
+    end
+
+    for _, line_text in ipairs(body) do
+        virt_lines[#virt_lines + 1] = row(line_text, tone("DagitBody"))
+    end
+
+    if (summary or #body > 0) and #files > 0 then
+        virt_lines[#virt_lines + 1] = row("", "DagitPad")
+    end
+
+    for _, file in ipairs(files) do
+        virt_lines[#virt_lines + 1] = row(M.file_text(file), tone(FILE_GROUP[file.status] or "DagitFileModified"))
+    end
+
+    return virt_lines
+end
+
+--- Buffer rows for an expanded commit. The cursor can move through them.
+---
+---@param line dagit.RenderedLine
+---@param detail dagit.CommitDetail
+---@return dagit.RenderedLine[]
+function M.detail_lines(line, detail)
+    local rows = {}
+
+    for _, chunks in ipairs(M.detail_virt_lines(line, detail)) do
+        local parts = {}
+        local spans = {}
+        local byte = 0
+
+        for _, chunk in ipairs(chunks) do
+            local text = chunk[1]
+
+            if text ~= "" then
+                local start_byte = byte
+                parts[#parts + 1] = text
+                byte = byte + #text
+
+                if chunk[2] ~= "DagitPad" then
+                    spans[#spans + 1] = {
+                        start = start_byte,
+                        stop = byte,
+                        group = chunk[2],
+                    }
+                end
+            end
+        end
+
+        rows[#rows + 1] = {
+            text = table.concat(parts),
+            node_start = 0,
+            node_length = 0,
+            node_group = "DagitGraph1",
+            spans = spans,
+            virt = {},
+            commit_index = line.commit_index,
+            kind = "detail",
+        }
+    end
+
+    return rows
 end
 
 return M

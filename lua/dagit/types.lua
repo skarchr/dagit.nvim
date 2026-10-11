@@ -7,6 +7,7 @@
 --- One branch, tag, or HEAD decoration on a commit.
 ---@field name string Display name, such as `main` or `origin/main`.
 ---@field kind "head" | "branch" | "remote" | "tag"
+---@field upstream_gone boolean The local branch tracks a remote ref that no longer exists.
 
 ---@class dagit.Commit
 --- One row in the history log.
@@ -16,6 +17,19 @@
 ---@field timestamp string Author time in ISO-8601.
 ---@field subject string First line of the commit message.
 ---@field refs dagit.Ref[]
+---@field local_only boolean Not reachable from any remote-tracking ref.
+---@field remote_only boolean On a remote-tracking ref, and not on a local branch or HEAD.
+
+---@class dagit.CommitFile
+--- One path changed by a commit.
+---@field status string `M`, `A`, `D`, `R`, or another name-status letter.
+---@field path string Path after the commit. A deletion keeps the old path.
+---@field old_path? string Previous path when the file was renamed or copied.
+
+---@class dagit.CommitDetail
+--- Description and files shown under an expanded commit.
+---@field body string[] Commit description, without the subject line.
+---@field files dagit.CommitFile[]
 
 ---@class dagit.Icons
 --- Glyphs drawn in front of branch and tag names.
@@ -44,6 +58,8 @@
 ---@field branch_start string
 ---@field merge_right string
 ---@field merge_left string
+---@field diagonal_right string Parent lane sloping down to the right.
+---@field diagonal_left string Parent lane sloping down to the left.
 
 ---@class dagit.Keymaps
 --- Buffer-local maps created in the history window.
@@ -52,6 +68,9 @@
 ---@field copy_hash string | false
 ---@field close string | false
 ---@field refresh string | false
+---@field expand string | false Show or hide the description and files. Default `<CR>`.
+---@field show string | false Show or hide the description and files. Default `z`.
+---@field collapse string | false Hide every expanded commit. Default `Z`.
 
 ---@class dagit.Config
 --- Resolved configuration. Every field is present.
@@ -61,7 +80,7 @@
 ---@field log_args string[] Extra arguments inserted into `git log`.
 ---@field date_format string `os.date` format, or `"relative"`. Another year is shown; the current year is left off.
 ---@field author_max_width integer
----@field ref_max_width integer Maximum width of the `(HEAD -> branch)` decoration and of the tag on the right.
+---@field ref_max_width integer Maximum width of the `HEAD (branch)` decoration and of the tag on the right.
 ---@field multi_tag_label string Label drawn when a commit has more than one tag.
 ---@field dim_merges boolean Dim commits that have more than one parent.
 ---@field git_cmd string
