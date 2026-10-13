@@ -1,6 +1,6 @@
 # dagit.nvim
 
-Git history in a horizontal split. Each row is a graph, an abbreviated hash, `HEAD (branch)`, and the subject. When another branch leaves that same merge, the merged parent stays on the node and the other branch joins the line above it. Tags, the author, and the date with its time stay on the right. The highlighted row has `>` on the left and the cursor-line background. Opening the history places that highlight on the checked-out commit. The commit HEAD points at is drawn in bold. A commit that is not on any remote uses a different hash color. A branch that is not local is drawn in a muted lane color, and the text on those commits is muted the same way. `<C-o>` copies the full hash. The caret is hidden in that window.
+Git history in a horizontal split. Each row is a graph, an abbreviated hash, `HEAD` and the branch names, and the subject. When another branch leaves that same merge, the merged parent stays on the node and the other branch joins the line above it. Tags, the author, and the date with its time stay on the right. The highlighted row has `>` on the left and the cursor-line background. Opening the history places that highlight on the checked-out commit. The commit HEAD points at is drawn in bold. A commit that is not on any remote uses a different hash color. A branch that is not local is drawn in a muted lane color, and the text on those commits is muted the same way. `<C-o>` copies the full hash. The caret is hidden in that window.
 
 ## Requirements
 
@@ -107,7 +107,7 @@ require("dagit").setup({
     log_args = { "--all" },      -- passed to `git log`. Stashes are left out.
     date_format = "%d %b %H:%M", -- os.date format, or "relative". A date-only format still gets HH:MM. Another year is shown; the current year is left off.
     author_max_width = 22,
-    ref_max_width = 30,          -- width of "HEAD (branch)" and of the tag
+    ref_max_width = 30,          -- width of "HEAD branch" and of the tag
     multi_tag_label = "multi tag", -- several tags collapse to this label
     dim_merges = true,           -- dim commits with more than one parent
     git_cmd = "git",
@@ -160,12 +160,14 @@ Every group links to a colorscheme group until you define it yourself.
 | `DagitHash` | `Label` | abbreviated commit hash |
 | `DagitHashLocal` | `DiagnosticWarn` | hash of a commit that is not on any remote |
 | `DagitUpstreamGone` | `DiagnosticError` | `(upstream gone)` after a local branch whose upstream ref is missing |
-| `DagitDecor` | `Delimiter` | parentheses and commas around refs |
-| `DagitHeadMark` | `Special` filled behind the history background | the word `HEAD` before `(branch)`, with a space on each side |
+| `DagitDecor` | `Delimiter` | delimiter |
+| `DagitHeadMark` | `Special` filled behind the history background | the word `HEAD`, with a space on each side |
 | `DagitHead` | bold, colorscheme foreground | `>` on the highlighted row, the HEAD subject, and the active filter name |
 | `DagitFilter` | `Comment` | inactive names on the filter line |
 | `DagitCursor` | `blend=100` | hidden caret in the history window |
-| `DagitGraph1` … `DagitGraph8` | theme syntax groups | graph lanes, and the branch, remote, and HEAD names on that lane |
+| `DagitGraph1` … `DagitGraph8` | theme syntax groups | graph lanes |
+| `DagitGraph1Rev` … `DagitGraph8Rev` | lane color filled behind the history background | branch and remote names on that lane |
+| `DagitGraph1MutedRev` … `DagitGraph8MutedRev` | muted lane color filled behind the history background | those names on a branch that is not local |
 | `DagitGraph1Muted` … `DagitGraph8Muted` | lane color, faded toward the background | branches that are not local |
 | `DagitTextMuted` | foreground, faded toward the background | subject on a commit that is not local. Hash, decoration, tag, author, and date use the `Muted` copy of their usual group |
 | `DagitMerge` | `Comment` | merge subjects |

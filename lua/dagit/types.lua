@@ -85,7 +85,7 @@
 ---@field log_args string[] Extra arguments inserted into `git log`.
 ---@field date_format string `os.date` format, or `"relative"`. Another year is shown; the current year is left off.
 ---@field author_max_width integer
----@field ref_max_width integer Maximum width of the `HEAD (branch)` decoration and of the tag on the right.
+---@field ref_max_width integer Maximum width of the `HEAD branch` decoration and of the tag on the right.
 ---@field multi_tag_label string Label drawn when a commit has more than one tag.
 ---@field dim_merges boolean Dim commits that have more than one parent.
 ---@field git_cmd string

@@ -1,6 +1,6 @@
 --- Turn commits into buffer lines and highlight spans.
 ---
---- Each row is `  graph hash HEAD (branch) subject`. The first cell is a
+--- Each row is `  graph hash HEAD branch subject`. The first cell is a
 --- blank the view replaces with `>` on the highlighted row. Tags, the author,
 --- and the date stay right-aligned so they pin to the window edge.
 
@@ -270,12 +270,16 @@ local function short_hash(hash)
 end
 
 --- Shown after a local branch whose upstream ref no longer exists.
+--- The leading space keeps the branch badge from touching the parenthesis.
 local UPSTREAM_GONE = " (upstream gone)"
 
 -- One space on each side of the word, so the reversed fill reads as a badge.
 local HEAD_MARK = " HEAD "
 
---- Lower sorts first inside `HEAD (branch)`.
+-- Piece group replaced with the lane's reversed badge, `DagitGraphNRev`.
+local BRANCH_MARK = "DagitBranchMark"
+
+--- Lower sorts first beside the HEAD badge.
 local REF_PRIORITY = {
     head = 1,
     branch = 2,
@@ -301,13 +305,14 @@ local function decorate(name, kind, icons)
     return icon .. name, REF_GROUP[kind] or "DagitRefBranch"
 end
 
---- `HEAD (branch, …)` pieces that fit in `config.ref_max_width`.
+--- `HEAD branch …` pieces that fit in `config.ref_max_width`.
 ---
 --- Tags are drawn on the right, not here. Head, local branches, and remotes
---- are kept in that order. The HEAD badge sits in front of the parentheses.
---- A detached HEAD is the badge alone. Names that do not fit are dropped
---- from the end and then truncated. The badge and the parentheses count
---- toward the width.
+--- are kept in that order. Each branch name is its own reversed badge, with
+--- a space on each side, and a plain space sits between badges. A detached
+--- HEAD is the badge alone. `(upstream gone)` stays after that branch.
+--- Names that do not fit are dropped from the end and then truncated. The
+--- badges, the gaps, and `(upstream gone)` count toward the width.
 ---
 ---@param refs dagit.Ref[]
 ---@param config dagit.Config
@@ -332,14 +337,13 @@ function M.decoration(refs, config)
         return left.index < right.index
     end)
 
-    ---@type { text: string, group: string, kind: string, name: string, upstream_gone: boolean }[]
+    ---@type { text: string, kind: string, name: string, upstream_gone: boolean }[]
     local items = {}
 
     for _, entry in ipairs(primary) do
-        local text, group = decorate(entry.ref.name, entry.ref.kind, config.icons)
+        local text = decorate(entry.ref.name, entry.ref.kind, config.icons)
         items[#items + 1] = {
             text = text,
-            group = group,
             kind = entry.ref.kind,
             name = entry.ref.name,
             upstream_gone = entry.ref.upstream_gone == true,
@@ -354,10 +358,10 @@ function M.decoration(refs, config)
         return item.kind == "head" and item.name == "HEAD"
     end
 
-    --- Names drawn inside the parentheses. Detached HEAD has none.
+    --- Branch names drawn as badges. Detached HEAD has none.
     ---
     ---@param list { text: string, upstream_gone: boolean, kind: string, name: string }[]
-    ---@return { text: string, group: string, kind: string, name: string, upstream_gone: boolean }[]
+    ---@return { text: string, kind: string, name: string, upstream_gone: boolean }[]
     local function names_of(list)
         local names = {}
 
@@ -392,19 +396,18 @@ function M.decoration(refs, config)
             return width
         end
 
-        -- Space after the badge, parentheses, and ", " between names.
-        width = width + 2
-
+        -- Plain cell between the HEAD badge and the first name.
         if has_badge(list) then
             width = width + 1
         end
 
         for index, item in ipairs(names) do
             if index > 1 then
-                width = width + 2
+                width = width + 1
             end
 
-            width = width + vim.api.nvim_strwidth(item.text)
+            -- A space on each side, so the reversed fill reads as a badge.
+            width = width + vim.api.nvim_strwidth(item.text) + 2
 
             if item.upstream_gone then
                 width = width + vim.api.nvim_strwidth(UPSTREAM_GONE)
@@ -437,27 +440,23 @@ function M.decoration(refs, config)
         return pieces
     end
 
-    local open = "("
-
+    -- A plain cell between badges, so the reversed fills do not touch.
     if has_badge(items) then
-        open = " ("
+        pieces[#pieces + 1] = { text = " ", group = "DagitPad" }
     end
-
-    pieces[#pieces + 1] = { text = open, group = "DagitDecor" }
 
     for index, item in ipairs(names) do
         if index > 1 then
-            pieces[#pieces + 1] = { text = ", ", group = "DagitDecor" }
+            pieces[#pieces + 1] = { text = " ", group = "DagitPad" }
         end
 
-        pieces[#pieces + 1] = { text = item.text, group = item.group }
+        pieces[#pieces + 1] = { text = " " .. item.text .. " ", group = BRANCH_MARK }
 
         if item.upstream_gone then
             pieces[#pieces + 1] = { text = UPSTREAM_GONE, group = "DagitUpstreamGone" }
         end
     end
 
-    pieces[#pieces + 1] = { text = ")", group = "DagitDecor" }
     return pieces
 end
 
@@ -565,7 +564,7 @@ function M.build(commits, config)
             }
         end
 
-        -- The branch name uses the lane color, so it matches the graph.
+        -- The branch badge fills with the lane color, so it matches the graph.
         local lane_group = graph_group(row.color, row.muted)
         local pieces = M.decoration(commit.refs, config)
 
@@ -573,14 +572,9 @@ function M.build(commits, config)
             text = text .. " "
 
             for _, piece in ipairs(pieces) do
-                local fixed = piece.group == "DagitHead"
-                    or piece.group == "DagitHeadMark"
-                    or piece.group == "DagitDecor"
-                    or piece.group == "DagitUpstreamGone"
-
-                if not fixed then
-                    piece.group = lane_group
-                else
+                if piece.group == BRANCH_MARK then
+                    piece.group = lane_group .. "Rev"
+                elseif piece.group ~= "DagitPad" then
                     piece.group = quiet(piece.group, remote)
                 end
 

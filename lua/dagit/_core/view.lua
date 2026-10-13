@@ -123,13 +123,13 @@ local function virt_chunks(line, selected)
     return chunks
 end
 
---- `line_hl_group` covers an extmark range's background. The reversed
---- HEAD badge is drawn again as overlay text, which keeps its own fill.
+--- `line_hl_group` covers an extmark range's background. A reversed badge
+--- is drawn again as overlay text, which keeps its own fill.
 ---
 ---@param group string
 ---@return boolean
-local function is_head_mark(group)
-    return group:find("DagitHeadMark", 1, true) == 1
+local function keeps_fill(group)
+    return group:find("DagitHeadMark", 1, true) == 1 or group:find("Rev", 1, true) ~= nil
 end
 
 ---@param buf integer
@@ -153,7 +153,7 @@ local function apply_line_marks(buf, line, row)
                 group = span.group,
             }
 
-            if is_head_mark(span.group) then
+            if keeps_fill(span.group) then
                 stored.overlay = vim.api.nvim_buf_set_extmark(buf, NAMESPACE, row, span.start, {
                     virt_text = { { line.text:sub(span.start + 1, span.stop), span.group } },
                     virt_text_pos = "overlay",

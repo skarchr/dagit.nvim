@@ -62,6 +62,8 @@ local LINE_SOURCES = {
 
 for index = 1, 8 do
     LINE_SOURCES[#LINE_SOURCES + 1] = "DagitGraph" .. index .. "Muted"
+    LINE_SOURCES[#LINE_SOURCES + 1] = "DagitGraph" .. index .. "Rev"
+    LINE_SOURCES[#LINE_SOURCES + 1] = "DagitGraph" .. index .. "MutedRev"
 end
 
 for _, name in ipairs({
@@ -290,6 +292,44 @@ local function paper_color()
     return normal.bg, normal.ctermbg
 end
 
+--- Branch and remote names, filled with the lane color.
+---
+--- The letters use the history background, the same way `HEAD` uses it.
+--- A muted lane keeps that quieter color as the fill.
+local function define_lane_badges()
+    local paper, paper_cterm = paper_color()
+
+    local function paint(source_name)
+        local source = vim.api.nvim_get_hl(0, { name = source_name, link = false })
+        local lane = source.fg
+        local lane_cterm = source.ctermfg
+
+        if paper and lane then
+            vim.api.nvim_set_hl(0, source_name .. "Rev", present({
+                fg = paper,
+                bg = lane,
+                ctermfg = paper_cterm,
+                ctermbg = lane_cterm,
+                bold = true,
+                default = true,
+            }))
+        else
+            vim.api.nvim_set_hl(0, source_name .. "Rev", present({
+                fg = lane,
+                ctermfg = lane_cterm,
+                bold = true,
+                reverse = true,
+                default = true,
+            }))
+        end
+    end
+
+    for index = 1, 8 do
+        paint("DagitGraph" .. index)
+        paint("DagitGraph" .. index .. "Muted")
+    end
+end
+
 --- `HEAD` is the theme accent filled behind the history background.
 local function define_head_label()
     local accent, accent_cterm = accent_color()
@@ -380,6 +420,7 @@ function M.define()
     vim.api.nvim_set_hl(0, "DagitCursor", { blend = 100, default = true })
 
     define_muted()
+    define_lane_badges()
 
     for _, source in ipairs(LINE_SOURCES) do
         define_bold(source)

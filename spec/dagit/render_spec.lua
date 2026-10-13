@@ -120,7 +120,7 @@ describe("render.build", function()
         local spine = "  " .. symbols.vertical .. " " .. symbols.commit_through .. " "
 
         assert.truthy(vim.startswith(lines[1].text, fork))
-        assert.truthy(lines[1].text:find("m  HEAD  (main) Merge the feature branch", 1, true) ~= nil)
+        assert.truthy(lines[1].text:find("m  HEAD   main  Merge the feature branch", 1, true) ~= nil)
         assert.truthy(vim.startswith(lines[2].text, spine))
         assert.truthy(lines[2].text:find("b Add a check", 1, true) ~= nil)
         assert.truthy(lines[1].node_group:find("Bold$") ~= nil)
@@ -204,7 +204,17 @@ describe("render.build", function()
         }, config)
 
         local function decoration(line)
-            return line.text:match("%b()")
+            local parts = {}
+
+            for _, span in ipairs(line.spans) do
+                local group = span.group
+
+                if group:find("Rev", 1, true) or group:find("HeadMark", 1, true) or group:find("UpstreamGone", 1, true) then
+                    parts[#parts + 1] = line.text:sub(span.start + 1, span.stop)
+                end
+            end
+
+            return table.concat(parts)
         end
 
         local function tag_of(line)
@@ -220,8 +230,8 @@ describe("render.build", function()
         assert.truthy(vim.api.nvim_strwidth(branch) <= config.ref_max_width)
         assert.truthy(branch:find("feature/", 1, true) ~= nil)
         assert.truthy(branch:find("deploy/", 1, true) == nil)
-        assert.truthy(lines[2].text:find(" HEAD  (main)", 1, true) ~= nil)
-        assert.equal("(main)", decoration(lines[2]))
+        assert.truthy(lines[2].text:find(" HEAD   main ", 1, true) ~= nil)
+        assert.equal(" HEAD  main ", decoration(lines[2]))
         assert.equal("multi tag", tag_of(lines[1]))
         assert.equal("v1.2.3", tag_of(lines[2]))
 
@@ -258,8 +268,8 @@ describe("render.build", function()
             }),
         }, config)
 
-        assert.truthy(lines[1].text:find("(feature (upstream gone), origin/kept)", 1, true) ~= nil)
-        assert.truthy(lines[2].text:find(" HEAD  (feature (upstream gone))", 1, true) ~= nil)
+        assert.truthy(lines[1].text:find(" feature  (upstream gone)  origin/kept ", 1, true) ~= nil)
+        assert.truthy(lines[2].text:find(" HEAD   feature  (upstream gone)", 1, true) ~= nil)
 
         local function span_text(line, group)
             for _, span in ipairs(line.spans) do
@@ -280,7 +290,15 @@ describe("render.build", function()
             }),
         }, config)
 
-        local decoration = tight[1].text:match("%b()")
+        local decoration = ""
+
+        for _, span in ipairs(tight[1].spans) do
+            local group = span.group
+
+            if group:find("Rev", 1, true) or group:find("UpstreamGone", 1, true) then
+                decoration = decoration .. tight[1].text:sub(span.start + 1, span.stop)
+            end
+        end
 
         assert.truthy(vim.api.nvim_strwidth(decoration) <= config.ref_max_width)
         assert.truthy(decoration:find("(upstream gone)", 1, true) ~= nil)
@@ -301,7 +319,7 @@ describe("render.build", function()
             }),
         }, config)
 
-        assert.truthy(lines[1].text:find("(main)", 1, true) ~= nil)
+        assert.truthy(lines[1].text:find(" main ", 1, true) ~= nil)
 
         local label = nil
 
@@ -345,9 +363,17 @@ describe("render.build", function()
             end
         end
 
-        assert.equal(lines[1].node_group, group_of(lines[1], "main"))
-        assert.equal(lines[1].node_group, group_of(lines[1], "origin/main"))
-        assert.equal(lines[2].node_group, group_of(lines[2], "feature"))
+        local function badge_group(node_group)
+            if node_group:find("Bold$") then
+                return node_group:gsub("Bold$", "") .. "RevBold"
+            end
+
+            return node_group .. "Rev"
+        end
+
+        assert.equal(badge_group(lines[1].node_group), group_of(lines[1], " main "))
+        assert.equal(badge_group(lines[1].node_group), group_of(lines[1], " origin/main "))
+        assert.equal(badge_group(lines[2].node_group), group_of(lines[2], " feature "))
 
         local tag_group = nil
 
@@ -395,9 +421,8 @@ describe("render.build", function()
         assert.equal("DagitHead", group_of(lines[1], "Ahead of the remote"))
         assert.equal(nil, lines[1].node_group:find("Muted", 1, true))
         assert.truthy(lines[2].node_group:find("Muted$") ~= nil)
-        assert.equal(lines[2].node_group, group_of(lines[2], "origin/topic"))
+        assert.equal(lines[2].node_group .. "Rev", group_of(lines[2], " origin/topic "))
         assert.equal("DagitHashMuted", group_of(lines[2], "remote1"))
-        assert.equal("DagitDecorMuted", group_of(lines[2], "("))
         assert.equal("DagitTextMuted", group_of(lines[2], "Only on the remote"))
 
         local function virt_group(line, text)

@@ -16,15 +16,18 @@ CONTENTS                                                      *dagit-contents*
 
 dagit shows `git log` in a horizontal split. Each commit is one row:
 
-    > graph  hash HEAD (branch) subject    tag    author    date time
+    > graph  hash HEAD branch subject    tag    author    date time
 
 `>` marks the highlighted row, in addition to the |hl-CursorLine|
 background. The history opens on the checked-out commit. When that
 commit is not in the loaded log, the first row is highlighted.
 Other rows leave that cell blank so the graph stays aligned.
 The row for the commit HEAD points at is bold. Its decoration is
-`HEAD (branch)`. A detached HEAD is the badge alone. Tags sit on
-the right, ahead of the author. Several tags on one commit collapse
+`HEAD branch`. Each branch name is a badge in that commit's lane
+color, with the letters cut out of the history background, the same
+way `HEAD` is drawn. A plain space sits between badges. A detached
+HEAD is the badge alone. Tags sit on the right, ahead of the author.
+Several tags on one commit collapse
 to one label. The hash uses |DagitHash|.
 A commit that is not on any remote uses |DagitHashLocal|.
 A local branch whose upstream is gone shows `(upstream gone)` after
@@ -198,13 +201,14 @@ author_max_width    integer (default 22)
                                                          *dagit-ref_max_width*
 ref_max_width       integer (default 30)
                     Maximum display width of the
-                    `HEAD (branch)` decoration, including
-                    the badge and the parentheses, and of
-                    the tag on the right. Head and local
-                    branches are kept ahead of remotes.
-                    Names that do not fit are dropped from
-                    the end, then truncated. A tag is
-                    truncated to this width.
+                    `HEAD branch` decoration, including
+                    the badges, the space between them,
+                    and `(upstream gone)`, and of the tag
+                    on the right. Head and local branches
+                    are kept ahead of remotes. Names that
+                    do not fit are dropped from the end,
+                    then truncated. A tag is truncated to
+                    this width.
 
                                                       *dagit-multi_tag_label*
 multi_tag_label     string (default "multi tag")
@@ -311,14 +315,21 @@ and reports the problem from |:checkhealth| and |vim.notify()|.
 These groups link to the active colorscheme. Defining one yourself, or in
 a colorscheme, replaces the link.
 
-    DagitGraph1 .. DagitGraph8    One color per graph lane. Branch,
-                                  remote, and HEAD names on a commit
-                                  use that commit's lane color.
+    DagitGraph1 .. DagitGraph8    One color per graph lane.
+    DagitGraph1Rev .. DagitGraph8Rev
+                                  Branch and remote names on that
+                                  lane. The lane color fills the
+                                  cells. The letters use the history
+                                  background. A space on each side
+                                  makes the name a badge.
     DagitGraph1Muted .. DagitGraph8Muted
                                   That lane, faded toward the
                                   background, for a branch that is
                                   not local. Defining the group
                                   yourself keeps your color.
+    DagitGraph1MutedRev .. DagitGraph8MutedRev
+                                  The same badge, filled with the
+                                  muted lane color.
     DagitTextMuted                Subject on a commit that is
                                   not local. The hash, decoration,
                                   tag, author, and date on that
@@ -331,19 +342,17 @@ a colorscheme, replaces the link.
                                   local branch whose upstream
                                   ref is missing
                                   (DiagnosticError)
-    DagitDecor                    Parentheses and commas     (Delimiter)
-                                  around the ref list.
+    DagitDecor                    Delimiter                      (Delimiter)
     DagitNormal                   History window background.
                                   SnacksPickerList, then
                                   SnacksPicker, then NormalFloat.
-    DagitHeadMark                 The word HEAD before
-                                  `(branch)`, with a space on
-                                  each side so the fill reads
-                                  as a badge. Another space
-                                  separates that badge from
-                                  the parenthesis. |Special|
-                                  fills the cells. The letters
-                                  use the history background.
+    DagitHeadMark                 The word HEAD, with a space
+                                  on each side so the fill reads
+                                  as a badge. A plain space
+                                  separates it from the next
+                                  badge. |Special| fills the
+                                  cells. The letters use the
+                                  history background.
     DagitHead                     Bold text. The ">" on the
                                   highlighted row, the subject
                                   when that commit is HEAD and
