@@ -39,6 +39,17 @@ continue through that block. `j` and `k` move through the lines.
 Press `<CR>` again to hide it. `z` toggles the block as well.
 `Z` hides every open block.
 
+A filter line stays at the top of the window:
+
+    [all]  local  remote
+
+`<Tab>` selects the next filter. `<S-Tab>` selects the previous one.
+Brackets mark the active name. A new window starts on |dagit-filter|
+(default `all`). `all` is the loaded log. `local` shows commits
+reachable from a local branch or HEAD. `remote` shows commits
+reachable from a remote-tracking branch. The line stays put while
+the log scrolls. An open window keeps the filter it already has.
+
 The caret is hidden. The window background follows the Snacks explorer
 (`SnacksPickerList`, then `SnacksPicker`, then |hl-NormalFloat|).
 
@@ -97,12 +108,17 @@ Buffer-local maps in the history window:
     <CR>      Show or hide the description and files  *<Plug>(DagitExpand)*
     z         Show or hide the description and files  *<Plug>(DagitShow)*
     Z         Hide every expanded commit              *<Plug>(DagitCollapse)*
+    <Tab>     Next commit filter                     *<Plug>(DagitFilterNext)*
+    <S-Tab>   Previous commit filter                 *<Plug>(DagitFilterPrev)*
 
 `<CR>` runs |dagit-on_select| when that callback is set and
 |dagit-keymaps| `expand` is not `<CR>`.
 
 <C-o> is local to the history buffer. The jump-list mapping is left alone
 in every other window.
+
+`<Tab>` and `<S-Tab>` are local to the history buffer. In a terminal
+`<Tab>` is the same key as `<C-i>`.
 
 `<Plug>` maps, for your own keys:
 
@@ -140,6 +156,15 @@ height              number (default 16)
 
                                                          *dagit-split*
 split               "bottom" or "top" (default "bottom")
+
+                                                         *dagit-filter*
+filter              "all", "local", or "remote" (default "all")
+                    Filter selected when a history window opens.
+                    `all` is the loaded log. `local` keeps commits
+                    reachable from a local branch or HEAD. `remote`
+                    keeps commits reachable from a remote-tracking
+                    branch. Focusing an open window leaves its
+                    filter alone.
 
                                                          *dagit-max_count*
 max_count           integer (default 256)
@@ -256,6 +281,11 @@ keymaps.show        string or false (default "z")
                     `keymaps.expand`.
 keymaps.collapse    string or false (default "Z")
                     Hide the block under every commit.
+keymaps.filter_next string or false (default "<Tab>")
+                    Select the next commit filter:
+                    all, local, remote.
+keymaps.filter_prev string or false (default "<S-Tab>")
+                    Select the previous commit filter.
 
                                                          *dagit-on_select*
 on_select           fun(commit: dagit.Commit) or nil
@@ -263,7 +293,8 @@ on_select           fun(commit: dagit.Commit) or nil
                     not `<CR>`. Use it for another action, such
                     as opening a diff. The commit table
                     has `hash`, `parents`, `author`, `timestamp`, `subject`,
-                    `refs`, `local_only`, and `remote_only`. Each ref has
+                    `refs`, `local_only`, `remote_only`, `on_local`,
+                    and `on_remote`. Each ref has
                     `name`, `kind` (`head`, `branch`, `remote`, or `tag`),
                     and `upstream_gone`. That is true when the local branch
                     tracks a remote ref that no longer exists.
@@ -314,10 +345,12 @@ a colorscheme, replaces the link.
                                   fills the cells. The letters
                                   use the history background.
     DagitHead                     Bold text. The ">" on the
-                                  highlighted row, and the
-                                  subject when that commit is
-                                  HEAD and is not dimmed as
-                                  a merge.
+                                  highlighted row, the subject
+                                  when that commit is HEAD and
+                                  is not dimmed as a merge, and
+                                  the active filter name.
+    DagitFilter                   Inactive names on the filter
+                                  line.                      (Comment)
     DagitCursor                   Hidden caret. blend=100.
     DagitMerge                    Merge commit subjects      (Comment)
     DagitAuthor                   Author column              (Comment)
@@ -347,7 +380,7 @@ The Lua module is `dagit`. Modules under `dagit._core` are private.
 
     require("dagit").open(opts)            *dagit.open()*
         Open or focus the history split. A new history starts on
-        the checked-out commit.
+        the checked-out commit, inside the filter from |dagit-filter|.
         opts.cwd        directory inside the repository
         opts.log_args   replaces log_args for this open
         opts.max_count  overrides max_count for this open
@@ -374,6 +407,15 @@ The Lua module is `dagit`. Modules under `dagit._core` are private.
 
     require("dagit").collapse()            *dagit.collapse()*
         Hide the description and files under every commit.
+
+    require("dagit").filter_next()         *dagit.filter_next()*
+        Select the next filter (`all`, `local`, `remote`)
+        and redraw. Returns the active name, or nil when the
+        history window is not focused.
+
+    require("dagit").filter_prev()         *dagit.filter_prev()*
+        Select the previous filter and redraw. Returns the same
+        way as |dagit.filter_next()|.
 
     require("dagit").commit()              *dagit.commit()*
         The |dagit-on_select| commit under the cursor, or nil.

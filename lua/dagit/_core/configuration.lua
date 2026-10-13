@@ -9,6 +9,7 @@ local M = {}
 local defaults = {
     height = 16,
     split = "bottom",
+    filter = "all",
     max_count = 256,
     log_args = { "--all" },
     date_format = "%d %b %H:%M",
@@ -48,6 +49,8 @@ local defaults = {
         expand = "<CR>",
         show = "z",
         collapse = "Z",
+        filter_next = "<Tab>",
+        filter_prev = "<S-Tab>",
     },
 }
 
@@ -267,6 +270,8 @@ local function validate_keymaps(issues, cfg)
         expand = true,
         show = true,
         collapse = true,
+        filter_next = true,
+        filter_prev = true,
     }
 
     for key, value in pairs(cfg.keymaps) do
@@ -294,6 +299,7 @@ function M.validate(cfg)
     end
 
     check_enum(issues, "split", cfg.split, { "bottom", "top" })
+    check_enum(issues, "filter", cfg.filter, { "all", "local", "remote" })
 
     if check_type(issues, "max_count", cfg.max_count, "number") then
         if cfg.max_count < 1 or cfg.max_count % 1 ~= 0 then
@@ -341,6 +347,7 @@ function M.validate(cfg)
     local known = {
         height = true,
         split = true,
+        filter = true,
         max_count = true,
         log_args = true,
         date_format = true,

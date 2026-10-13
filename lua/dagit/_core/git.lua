@@ -217,8 +217,9 @@ end
 --- Mark commits that are only local, and commits that are only on a remote.
 ---
 --- `remote_text` and `local_text` are `git rev-list` output. A missing
---- remote listing leaves the colors unchanged. A missing local listing does
---- not mute the graph.
+--- remote listing leaves the colors unchanged and treats every commit as
+--- both local and remote, so those filters stay unfiltered. A missing
+--- local listing does not mute the graph.
 ---
 ---@param commits dagit.Commit[]
 ---@param remote_text string?
@@ -231,12 +232,16 @@ function M.apply_reachability(commits, remote_text, local_text)
         if not remote then
             commit.local_only = false
             commit.remote_only = false
+            commit.on_local = true
+            commit.on_remote = true
         else
             local on_remote = remote[commit.hash] == true
             local on_local = local_set == nil or local_set[commit.hash] == true
 
             commit.local_only = not on_remote
             commit.remote_only = on_remote and not on_local
+            commit.on_local = on_local
+            commit.on_remote = on_remote
         end
     end
 end

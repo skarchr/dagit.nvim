@@ -63,6 +63,8 @@ In the history window:
 | `<CR>` | Show or hide the commit description and files |
 | `z` | Show or hide the commit description and files |
 | `Z` | Hide every expanded commit |
+| `<Tab>` | Next commit filter: all, local, remote |
+| `<S-Tab>` | Previous commit filter |
 
 `<C-o>` is buffer-local, so the jump-list mapping is unchanged in other windows. Set a key to `false` to skip that default. `<Plug>` maps stay available:
 
@@ -71,7 +73,9 @@ vim.keymap.set("n", "<leader>gl", "<Plug>(DagitOpen)")
 vim.keymap.set("n", "<leader>gy", "<Plug>(DagitCopyHash)")
 ```
 
-`<Plug>(DagitRefresh)`, `<Plug>(DagitClose)`, `<Plug>(DagitExpand)`, `<Plug>(DagitShow)`, and `<Plug>(DagitCollapse)` are mapped the same way.
+`<Plug>(DagitRefresh)`, `<Plug>(DagitClose)`, `<Plug>(DagitExpand)`, `<Plug>(DagitShow)`, `<Plug>(DagitCollapse)`, `<Plug>(DagitFilterNext)`, and `<Plug>(DagitFilterPrev)` are mapped the same way.
+
+The top of the window keeps one line, `[all]  local  remote`. Brackets mark the active filter, and the line stays put while the log scrolls. `all` is the loaded log. `local` shows commits reachable from a local branch or HEAD. `remote` shows commits reachable from a remote-tracking branch. `filter` chooses which of those a new window starts on. An open window keeps the filter it already has. `<Tab>` is local to the history window. In a terminal it is the same key as `<C-i>`.
 
 `<CR>` draws a block under the highlighted commit, and hides it again. The text is indented. More than five changed files start the block with a count, such as `3 added, 1 modified, 2 deleted`. The commit description comes next, when the commit has one. Each changed file is a line after that: `M`, `A`, `D`, or `R`, then the path. A rename is `R old -> new`. The graph lanes continue through the block, and `j` and `k` move through the lines. `z` toggles the block as well. `Z` hides every open block. On a commit that is not local, that block uses the same muted colors as the row.
 
@@ -98,6 +102,7 @@ require("dagit").setup({
 {
     height = 16,                 -- rows. 0 < height < 1 is a fraction of the screen
     split = "bottom",            -- "bottom" or "top"
+    filter = "all",              -- "all", "local", or "remote". Used when a window opens.
     max_count = 256,
     log_args = { "--all" },      -- passed to `git log`. Stashes are left out.
     date_format = "%d %b %H:%M", -- os.date format, or "relative". A date-only format still gets HH:MM. Another year is shown; the current year is left off.
@@ -136,6 +141,8 @@ require("dagit").setup({
         expand = "<CR>",     -- toggle the description and files
         show = "z",           -- toggle the description and files
         collapse = "Z",       -- hide every expanded commit
+        filter_next = "<Tab>",
+        filter_prev = "<S-Tab>",
     },
     on_select = nil,
 }
@@ -155,7 +162,8 @@ Every group links to a colorscheme group until you define it yourself.
 | `DagitUpstreamGone` | `DiagnosticError` | `(upstream gone)` after a local branch whose upstream ref is missing |
 | `DagitDecor` | `Delimiter` | parentheses and commas around refs |
 | `DagitHeadMark` | `Special` filled behind the history background | the word `HEAD` before `(branch)`, with a space on each side |
-| `DagitHead` | bold, colorscheme foreground | `>` on the highlighted row, and the HEAD subject |
+| `DagitHead` | bold, colorscheme foreground | `>` on the highlighted row, the HEAD subject, and the active filter name |
+| `DagitFilter` | `Comment` | inactive names on the filter line |
 | `DagitCursor` | `blend=100` | hidden caret in the history window |
 | `DagitGraph1` … `DagitGraph8` | theme syntax groups | graph lanes, and the branch, remote, and HEAD names on that lane |
 | `DagitGraph1Muted` … `DagitGraph8Muted` | lane color, faded toward the background | branches that are not local |

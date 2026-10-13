@@ -3,6 +3,8 @@
 <Plug>(DagitCollapse)	dagit.txt	/*<Plug>(DagitCollapse)*
 <Plug>(DagitCopyHash)	dagit.txt	/*<Plug>(DagitCopyHash)*
 <Plug>(DagitExpand)	dagit.txt	/*<Plug>(DagitExpand)*
+<Plug>(DagitFilterNext)	dagit.txt	/*<Plug>(DagitFilterNext)*
+<Plug>(DagitFilterPrev)	dagit.txt	/*<Plug>(DagitFilterPrev)*
 <Plug>(DagitOpen)	dagit.txt	/*<Plug>(DagitOpen)*
 <Plug>(DagitRefresh)	dagit.txt	/*<Plug>(DagitRefresh)*
 <Plug>(DagitShow)	dagit.txt	/*<Plug>(DagitShow)*
@@ -34,6 +36,8 @@ dagit.collapse()	dagit.txt	/*dagit.collapse()*
 dagit.commit()	dagit.txt	/*dagit.commit()*
 dagit.copy_hash()	dagit.txt	/*dagit.copy_hash()*
 dagit.expand()	dagit.txt	/*dagit.expand()*
+dagit.filter_next()	dagit.txt	/*dagit.filter_next()*
+dagit.filter_prev()	dagit.txt	/*dagit.filter_prev()*
 dagit.open()	dagit.txt	/*dagit.open()*
 dagit.refresh()	dagit.txt	/*dagit.refresh()*
 dagit.setup()	dagit.txt	/*dagit.setup()*

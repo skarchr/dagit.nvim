@@ -559,3 +559,18 @@ describe("render.detail_virt_lines", function()
         assert.equal("DagitFileRenamedMuted", group_of(virt[7], "R old.txt -> new.txt"))
     end)
 end)
+
+describe("view filter line", function()
+    local view = require("dagit._core.view")
+
+    local function plain(bar)
+        return (bar:gsub("%%#[%w]+#", ""))
+    end
+
+    it("wraps the active filter in brackets", function()
+        assert.equal(" [all]  local  remote", plain(view.filter_bar("all")))
+        assert.equal(" all  [local]  remote", plain(view.filter_bar("local")))
+        assert.equal(" all  local  [remote]", plain(view.filter_bar("remote")))
+        assert.truthy(view.filter_bar("local"):find("%%#DagitHead#%[local%]") ~= nil)
+    end)
+end)

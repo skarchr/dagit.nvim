@@ -10,6 +10,7 @@ local LINKS = {
     DagitHashLocal = "DiagnosticWarn",
     DagitUpstreamGone = "DiagnosticError",
     DagitDecor = "Delimiter",
+    DagitFilter = "Comment",
     DagitMerge = "Comment",
     DagitAuthor = "Comment",
     DagitDate = "NonText",

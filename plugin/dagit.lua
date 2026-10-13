@@ -43,3 +43,11 @@ end, { desc = "Show or hide the commit description and files" })
 vim.keymap.set("n", "<Plug>(DagitCollapse)", function()
     require("dagit").collapse()
 end, { desc = "Hide every expanded commit" })
+
+vim.keymap.set("n", "<Plug>(DagitFilterNext)", function()
+    require("dagit").filter_next()
+end, { desc = "Show the next commit filter" })
+
+vim.keymap.set("n", "<Plug>(DagitFilterPrev)", function()
+    require("dagit").filter_prev()
+end, { desc = "Show the previous commit filter" })

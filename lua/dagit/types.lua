@@ -19,6 +19,8 @@
 ---@field refs dagit.Ref[]
 ---@field local_only boolean Not reachable from any remote-tracking ref.
 ---@field remote_only boolean On a remote-tracking ref, and not on a local branch or HEAD.
+---@field on_local boolean Reachable from a local branch or HEAD.
+---@field on_remote boolean Reachable from a remote-tracking ref.
 
 ---@class dagit.CommitFile
 --- One path changed by a commit.
@@ -71,11 +73,14 @@
 ---@field expand string | false Show or hide the description and files. Default `<CR>`.
 ---@field show string | false Show or hide the description and files. Default `z`.
 ---@field collapse string | false Hide every expanded commit. Default `Z`.
+---@field filter_next string | false Select the next commit filter. Default `<Tab>`.
+---@field filter_prev string | false Select the previous commit filter. Default `<S-Tab>`.
 
 ---@class dagit.Config
 --- Resolved configuration. Every field is present.
 ---@field height number Rows. A value between 0 and 1 is a fraction of the screen.
 ---@field split "bottom" | "top"
+---@field filter "all" | "local" | "remote" Filter selected when a history window opens.
 ---@field max_count integer Maximum commits to load.
 ---@field log_args string[] Extra arguments inserted into `git log`.
 ---@field date_format string `os.date` format, or `"relative"`. Another year is shown; the current year is left off.

@@ -326,6 +326,122 @@ describe("view", function()
         require("dagit").close()
     end)
 
+    it("filters commits from the line fixed at the top", function()
+        vim.cmd("enew")
+        local dir = vim.fn.tempname()
+        vim.fn.mkdir(dir, "p")
+        git(dir, "init", "-b", "trunk")
+        git(dir, "config", "user.email", "dagit@example.com")
+        git(dir, "config", "user.name", "Dagit Test")
+        git(dir, "config", "commit.gpgsign", "false")
+        write(dir .. "/f", "root\n")
+        git(dir, "add", "f")
+        git(dir, "commit", "-m", "root")
+        write(dir .. "/f", "tagged\n")
+        git(dir, "add", "f")
+        git(dir, "commit", "-m", "tagged")
+        git(dir, "tag", "v1")
+        write(dir .. "/f", "local tip\n")
+        git(dir, "add", "f")
+        git(dir, "commit", "-m", "local tip")
+        git(dir, "checkout", "-b", "side", "HEAD~2")
+        write(dir .. "/f", "remote tip\n")
+        git(dir, "add", "f")
+        git(dir, "commit", "-m", "remote tip")
+        git(dir, "update-ref", "refs/remotes/origin/side", "HEAD")
+        git(dir, "checkout", "trunk")
+        git(dir, "branch", "-D", "side")
+
+        assert.equal(true, require("dagit").open({ cwd = dir, height = 12, log_args = { "--all" } }))
+
+        local view = require("dagit._core.view")
+
+        local function plain(bar)
+            return (bar:gsub("%%#[%w]+#", ""))
+        end
+
+        local function has(subject)
+            local text = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+
+            return text:find(subject, 1, true) ~= nil
+        end
+
+        assert.equal(view.filter_bar("all"), vim.wo.winbar)
+        assert.equal(" [all]  local  remote", plain(vim.wo.winbar))
+        assert.truthy(vim.wo.winhighlight:find("WinBar:DagitNormal", 1, true))
+        assert.equal("local tip", require("dagit").commit().subject)
+        assert.equal(true, has("root"))
+        assert.equal(true, has("tagged"))
+        assert.equal(true, has("local tip"))
+        assert.equal(true, has("remote tip"))
+
+        local maps = vim.api.nvim_buf_get_keymap(0, "n")
+        local saw_tab = false
+        local saw_shift_tab = false
+
+        for _, map in ipairs(maps) do
+            if map.lhs == "<Tab>" then
+                saw_tab = true
+            end
+
+            if map.lhs == "<S-Tab>" then
+                saw_shift_tab = true
+            end
+        end
+
+        assert.equal(true, saw_tab)
+        assert.equal(true, saw_shift_tab)
+
+        assert.equal("local", require("dagit").filter_next())
+        assert.equal(view.filter_bar("local"), vim.wo.winbar)
+        assert.equal("local tip", require("dagit").commit().subject)
+        assert.equal(true, has("root"))
+        assert.equal(true, has("tagged"))
+        assert.equal(true, has("local tip"))
+        assert.equal(false, has("remote tip"))
+
+        assert.equal("remote", require("dagit").filter_next())
+        assert.equal(view.filter_bar("remote"), vim.wo.winbar)
+        assert.equal(true, has("root"))
+        assert.equal(false, has("tagged"))
+        assert.equal(false, has("local tip"))
+        assert.equal(true, has("remote tip"))
+        assert.equal("remote tip", require("dagit").commit().subject)
+
+        assert.equal("all", require("dagit").filter_next())
+        assert.equal(view.filter_bar("all"), vim.wo.winbar)
+        assert.equal(true, has("remote tip"))
+        assert.equal(true, has("local tip"))
+
+        assert.equal("remote", require("dagit").filter_prev())
+        assert.equal(view.filter_bar("remote"), vim.wo.winbar)
+        assert.equal("all", require("dagit").filter_next())
+
+        require("dagit").close()
+    end)
+
+    it("opens on the configured filter", function()
+        vim.cmd("enew")
+        local configuration = require("dagit._core.configuration")
+        configuration.set_user_opts({ filter = "remote" })
+        local dir = repo()
+        local view = require("dagit._core.view")
+
+        assert.equal(true, require("dagit").open({ cwd = dir, height = 8 }))
+        assert.equal(view.filter_bar("remote"), vim.wo.winbar)
+
+        assert.equal("all", require("dagit").filter_next())
+        assert.equal(true, require("dagit").open())
+        assert.equal(view.filter_bar("all"), vim.wo.winbar)
+
+        require("dagit").close()
+        assert.equal(true, require("dagit").open({ cwd = dir, height = 8 }))
+        assert.equal(view.filter_bar("remote"), vim.wo.winbar)
+
+        require("dagit").close()
+        configuration.set_user_opts(nil)
+    end)
+
     it("completes subcommands", function()
         vim.cmd("runtime plugin/dagit.lua")
         local matches = require("dagit").complete("c", "Dagit c", 0)

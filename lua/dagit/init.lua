@@ -86,6 +86,22 @@ function M.collapse()
     return require("dagit._core.view").collapse()
 end
 
+--- Select the next commit filter and redraw.
+---
+--- The names, in order, are `all`, `local`, and `remote`.
+---
+---@return string? filter Active filter, or nil when the history is not focused.
+function M.filter_next()
+    return require("dagit._core.view").filter_next()
+end
+
+--- Select the previous commit filter and redraw.
+---
+---@return string? filter Active filter, or nil when the history is not focused.
+function M.filter_prev()
+    return require("dagit._core.view").filter_prev()
+end
+
 --- Run a `:Dagit` invocation.
 ---
 ---@param opts { fargs: string[] }

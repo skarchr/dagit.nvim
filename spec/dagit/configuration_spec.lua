@@ -13,11 +13,14 @@ describe("configuration", function()
         assert.same({}, issues)
         assert.equal(16, config.height)
         assert.equal("bottom", config.split)
+        assert.equal("all", config.filter)
         assert.same({ "--all" }, config.log_args)
         assert.equal("<C-o>", config.keymaps.copy_hash)
         assert.equal("<CR>", config.keymaps.expand)
         assert.equal("z", config.keymaps.show)
         assert.equal("Z", config.keymaps.collapse)
+        assert.equal("<Tab>", config.keymaps.filter_next)
+        assert.equal("<S-Tab>", config.keymaps.filter_prev)
     end)
 
     it("merges a partial setup over vim.g", function()
@@ -46,6 +49,28 @@ describe("configuration", function()
 
         assert.same({}, issues)
         assert.equal("top", config.split)
+        reset()
+    end)
+
+    it("accepts a starting filter", function()
+        reset()
+        configuration.set_user_opts({ filter = "local" })
+
+        local config, issues = configuration.resolve()
+
+        assert.same({}, issues)
+        assert.equal("local", config.filter)
+        reset()
+    end)
+
+    it("rejects an unknown filter", function()
+        reset()
+        vim.g.dagit = { filter = "tags" }
+
+        local config, issues = configuration.resolve()
+
+        assert.equal("all", config.filter)
+        assert.truthy(#issues >= 1)
         reset()
     end)
 

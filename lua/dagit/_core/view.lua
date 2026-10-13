@@ -23,6 +23,8 @@ local NAMESPACE = vim.api.nvim_create_namespace("dagit")
 ---@field drawing boolean?
 ---@field expanded table<string, boolean>
 ---@field details table<string, dagit.CommitDetail>
+---@field filter "all" | "local" | "remote"
+---@field shown dagit.Commit[] Commits left after the filter. Row indexes point here.
 
 ---@type table<integer, dagit.ViewState>
 local states = {}
@@ -251,13 +253,97 @@ local function write_marker(state, row, glyph)
     apply_line_marks(state.buf, line, row - 1)
 end
 
+local FILTERS = { "all", "local", "remote" }
+
+local FILTER_FIELD = {
+    ["local"] = "on_local",
+    remote = "on_remote",
+}
+
+--- Commits the active filter leaves on screen.
+---
+--- `all` is the loaded log. `local` keeps commits reachable from a local
+--- branch or HEAD. `remote` keeps commits reachable from a remote-tracking
+--- ref.
+---
+---@param commits dagit.Commit[]
+---@param filter string?
+---@return dagit.Commit[]
+local function visible_commits(commits, filter)
+    local field = FILTER_FIELD[filter or "all"]
+
+    if not field then
+        return commits
+    end
+
+    local shown = {}
+
+    for _, commit in ipairs(commits) do
+        if commit[field] then
+            shown[#shown + 1] = commit
+        end
+    end
+
+    return shown
+end
+
+--- Filter line for the window bar. Brackets mark the active name.
+---
+---@param filter string?
+---@return string
+function M.filter_bar(filter)
+    local active = filter or "all"
+    local parts = {}
+
+    for _, name in ipairs(FILTERS) do
+        local chosen = name == active
+        local label = chosen and ("[" .. name .. "]") or name
+        local group = chosen and "DagitHead" or "DagitFilter"
+
+        parts[#parts + 1] = "%#" .. group .. "#" .. label
+    end
+
+    return "%#DagitFilter# " .. table.concat(parts, "  ")
+end
+
+---@param filter string?
+---@param direction integer
+---@return string
+local function step_filter(filter, direction)
+    local index = 1
+
+    for at, name in ipairs(FILTERS) do
+        if name == filter then
+            index = at
+            break
+        end
+    end
+
+    return FILTERS[((index - 1 + direction) % #FILTERS) + 1]
+end
+
+--- Keep the filter line pinned to the top of every history window.
+---
+---@param state dagit.ViewState
+local function paint_filter(state)
+    local bar = M.filter_bar(state.filter)
+
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) == state.buf then
+            vim.wo[win].winbar = bar
+        end
+    end
+end
+
 --- Commit rows, with the open description and file list under each one.
 ---
 ---@param state dagit.ViewState
 ---@param config dagit.Config
 ---@return dagit.RenderedLine[]
 local function compose(state, config)
-    local commits = render.build(state.commits, config)
+    local shown = visible_commits(state.commits, state.filter)
+    state.shown = shown
+    local commits = render.build(shown, config)
     local lines = {}
 
     state.expanded = state.expanded or {}
@@ -267,7 +353,7 @@ local function compose(state, config)
         line.kind = "commit"
         lines[#lines + 1] = line
 
-        local commit = state.commits[index]
+        local commit = shown[index]
         local detail = commit and state.expanded[commit.hash] and state.details[commit.hash]
 
         if detail then
@@ -311,6 +397,7 @@ local function draw(state)
     end
 
     state.drawing = false
+    paint_filter(state)
 end
 
 --- Buffer row of the commit that owns `row`. Detail rows belong to the commit above them.
@@ -491,6 +578,14 @@ local function apply_keymaps(buf)
         require("dagit").collapse()
     end, "Hide every expanded commit")
 
+    buffer_map(buf, config.keymaps.filter_next, function()
+        M.filter_next()
+    end, "Show the next commit filter")
+
+    buffer_map(buf, config.keymaps.filter_prev, function()
+        M.filter_prev()
+    end, "Show the previous commit filter")
+
     if config.on_select then
         buffer_map(buf, "<CR>", function()
             local commit = require("dagit").commit()
@@ -546,6 +641,8 @@ local function apply_window_options(win, height)
     vim.wo[win].winhighlight = table.concat({
         "Normal:DagitNormal",
         "NormalNC:DagitNormal",
+        "WinBar:DagitNormal",
+        "WinBarNC:DagitNormal",
         "Cursor:DagitCursor",
         "lCursor:DagitCursor",
         "TermCursor:DagitCursor",
@@ -584,6 +681,14 @@ local function commit_buffer_row(state, commit_index)
     return 1
 end
 
+--- Commits the last draw indexed. Falls back to the full log before the first draw.
+---
+---@param state dagit.ViewState
+---@return dagit.Commit[]
+local function listed_commits(state)
+    return state.shown or state.commits
+end
+
 --- Buffer row of the commit with `hash`, or nil when it is not loaded.
 ---
 ---@param state dagit.ViewState
@@ -594,9 +699,11 @@ local function hash_buffer_row(state, hash)
         return nil
     end
 
+    local source = listed_commits(state)
+
     for index, line in ipairs(state.lines) do
         if line.kind ~= "detail" then
-            local commit = state.commits[line.commit_index]
+            local commit = source[line.commit_index]
 
             if commit and commit.hash == hash then
                 return index
@@ -630,7 +737,7 @@ local function reload(state, at_head)
     if win ~= -1 and not at_head then
         local cursor = vim.api.nvim_win_get_cursor(win)[1]
         local current = state.lines[cursor]
-        local current_commit = current and state.commits[current.commit_index]
+        local current_commit = current and listed_commits(state)[current.commit_index]
 
         keep_hash = current_commit and current_commit.hash
     end
@@ -642,7 +749,7 @@ local function reload(state, at_head)
         local row
 
         if at_head then
-            row = commit_buffer_row(state, checked_out_row(state.commits))
+            row = commit_buffer_row(state, checked_out_row(listed_commits(state)))
         else
             row = hash_buffer_row(state, keep_hash) or vim.api.nvim_win_get_cursor(win)[1]
         end
@@ -765,6 +872,8 @@ function M.open(opts)
         lines = {},
         expanded = {},
         details = {},
+        filter = config.filter,
+        shown = {},
     }
 
     hide_cursor()
@@ -825,7 +934,7 @@ function M.commit()
         return nil
     end
 
-    return states[buf].commits[line.commit_index]
+    return listed_commits(states[buf])[line.commit_index]
 end
 
 --- History state when the cursor is inside the history window.
@@ -859,7 +968,49 @@ local function commit_at_cursor(state, win)
     local row = vim.api.nvim_win_get_cursor(win)[1]
     local line = state.lines[row]
 
-    return line and state.commits[line.commit_index]
+    return line and listed_commits(state)[line.commit_index]
+end
+
+--- Move the filter by `direction` and keep the cursor commit when it stays visible.
+---
+---@param direction integer
+---@return string?
+local function cycle_filter(direction)
+    local state, win = active_state()
+
+    if not state or not win then
+        return nil
+    end
+
+    local current = commit_at_cursor(state, win)
+    local keep = current and current.hash
+
+    state.filter = step_filter(state.filter or "all", direction)
+    draw(state)
+
+    if #state.lines > 0 then
+        local row = hash_buffer_row(state, keep) or 1
+
+        row = math.max(1, math.min(row, #state.lines))
+        vim.api.nvim_win_set_cursor(win, { row, 0 })
+        select_row(state, row)
+    end
+
+    return state.filter
+end
+
+--- Select the next commit filter.
+---
+---@return string?
+function M.filter_next()
+    return cycle_filter(1)
+end
+
+--- Select the previous commit filter.
+---
+---@return string?
+function M.filter_prev()
+    return cycle_filter(-1)
 end
 
 --- Read the description and files once per hash.
