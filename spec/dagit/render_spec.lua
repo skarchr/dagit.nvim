@@ -80,7 +80,7 @@ describe("render.build", function()
             commit({ hash = "base", parents = {}, subject = "base" }),
         }, config)
 
-        local merge = "  " .. symbols.commit_through .. symbols.horizontal .. symbols.branch_start .. " "
+        local merge = "  " .. symbols.commit_through .. symbols.arrow_left .. symbols.branch_start .. " "
         assert.truthy(vim.startswith(lines[3].text, merge))
         assert.equal(1, #lines[3].above_lines)
 
@@ -116,7 +116,7 @@ describe("render.build", function()
         }, config)
 
         local symbols = config.symbols
-        local fork = "  " .. symbols.commit_down .. symbols.horizontal .. symbols.branch_start .. " "
+        local fork = "  " .. symbols.commit_down .. symbols.arrow_left .. symbols.branch_start .. " "
         local spine = "  " .. symbols.vertical .. " " .. symbols.commit_through .. " "
 
         assert.truthy(vim.startswith(lines[1].text, fork))
@@ -593,9 +593,10 @@ describe("view filter line", function()
     end
 
     it("wraps the active filter in brackets", function()
-        assert.equal(" [all]  local  remote", plain(view.filter_bar("all")))
-        assert.equal(" all  [local]  remote", plain(view.filter_bar("local")))
-        assert.equal(" all  local  [remote]", plain(view.filter_bar("remote")))
+        assert.equal(" [all]  local  remote  head", plain(view.filter_bar("all")))
+        assert.equal(" all  [local]  remote  head", plain(view.filter_bar("local")))
+        assert.equal(" all  local  [remote]  head", plain(view.filter_bar("remote")))
+        assert.equal(" all  local  remote  [head]", plain(view.filter_bar("head")))
         assert.truthy(view.filter_bar("local"):find("%%#DagitHead#%[local%]") ~= nil)
     end)
 end)

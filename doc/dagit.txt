@@ -44,13 +44,14 @@ Press `<CR>` again to hide it. `z` toggles the block as well.
 
 A filter line stays at the top of the window:
 
-    [all]  local  remote
+    [all]  local  remote  head
 
 `<Tab>` selects the next filter. `<S-Tab>` selects the previous one.
 Brackets mark the active name. A new window starts on |dagit-filter|
 (default `all`). `all` is the loaded log. `local` shows commits
 reachable from a local branch or HEAD. `remote` shows commits
-reachable from a remote-tracking branch. The line stays put while
+reachable from a remote-tracking branch. `head` shows commits
+reachable from the checked-out branch. The line stays put while
 the log scrolls. An open window keeps the filter it already has.
 
 The caret is hidden. The window background follows the Snacks explorer
@@ -60,7 +61,10 @@ A commit in the middle of a lane is a circle with a line through it, so a
 straight history stays connected. A tip has the line below the circle, and
 a root has the line above it. When another branch leaves that same merge,
 the merged parent stays on the node. The other branch joins the line above
-the node.
+the node. On a merge commit, the cell beside the commit is an arrow
+pointing at it. A parent lane that continues through that row draws a
+junction, so the arrow meets the line. The rest of that line stays
+plain. Where a branch is created, the meeting lines stay plain.
 Ghostty, Kitty, and Contour paint the default
 glyphs to the cell edge. Other terminals use Nerd Font circles. Override
 |dagit-symbols| to draw plain characters instead. A branch that is not
@@ -161,13 +165,15 @@ height              number (default 16)
 split               "bottom" or "top" (default "bottom")
 
                                                          *dagit-filter*
-filter              "all", "local", or "remote" (default "all")
+filter              "all", "local", "remote", or "head"
+                    (default "all")
                     Filter selected when a history window opens.
                     `all` is the loaded log. `local` keeps commits
                     reachable from a local branch or HEAD. `remote`
                     keeps commits reachable from a remote-tracking
-                    branch. Focusing an open window leaves its
-                    filter alone.
+                    branch. `head` keeps commits reachable from the
+                    checked-out branch. Focusing an open window
+                    leaves its filter alone.
 
                                                          *dagit-max_count*
 max_count           integer (default 256)
@@ -257,6 +263,23 @@ symbols.horizontal        string
 symbols.branch_start      string
 symbols.merge_right       string
 symbols.merge_left        string
+symbols.join_right        string
+                    Vertical lane with a bar to the right.
+                    Drawn when a merge parent on the left
+                    continues through the row, so the arrow
+                    meets the line. Default `├`.
+symbols.join_left         string
+                    Vertical lane with a bar to the left.
+                    Drawn when a merge parent on the right
+                    continues through the row. Default `┤`.
+symbols.arrow_right       string
+                    Arrow in the cell left of a merge commit.
+                    The parent lane is on the left.
+                    Default `⊳`. One cell wide.
+symbols.arrow_left        string
+                    Arrow in the cell right of a merge commit.
+                    The parent lane is on the right.
+                    Default `⊲`. One cell wide.
 symbols.diagonal_right    string
                     Parent lane sloping down and to the right.
                     Default `╲`.
@@ -269,6 +292,12 @@ symbols.diagonal_left     string
                     branch-drawing glyphs those terminals paint to the cell
                     edge, so a straight lane stays continuous. Elsewhere the
                     defaults are Nerd Font circles and box-drawing lines.
+                    Corners and junctions are box-drawing angles (`┐`, `┘`,
+                    `└`, `├`, `┤`). The branch-drawing corners are quarter
+                    circles, so the bar leaves the midline. The arrows are
+                    `⊳` and `⊲`, one cell each. A glyph wider than one cell
+                    is drawn as `>` or `<`. A wide junction is drawn as the
+                    plain vertical.
                     Setting `symbols` keeps your glyphs on every terminal.
                     The cursor row is the highlight; the glyph stays in
                     place so the line through the circle is not covered.
@@ -287,7 +316,7 @@ keymaps.collapse    string or false (default "Z")
                     Hide the block under every commit.
 keymaps.filter_next string or false (default "<Tab>")
                     Select the next commit filter:
-                    all, local, remote.
+                    all, local, remote, head.
 keymaps.filter_prev string or false (default "<S-Tab>")
                     Select the previous commit filter.
 
@@ -298,13 +327,14 @@ on_select           fun(commit: dagit.Commit) or nil
                     as opening a diff. The commit table
                     has `hash`, `parents`, `author`, `timestamp`, `subject`,
                     `refs`, `local_only`, `remote_only`, `on_local`,
-                    and `on_remote`. Each ref has
+                    `on_remote`, and `on_head`. Each ref has
                     `name`, `kind` (`head`, `branch`, `remote`, or `tag`),
                     and `upstream_gone`. That is true when the local branch
                     tracks a remote ref that no longer exists.
                     `local_only` means no remote-tracking ref reaches the
                     commit. `remote_only` means a remote-tracking ref
                     reaches it and no local branch or HEAD does.
+                    `on_head` means the checked-out branch reaches it.
 
 Invalid configuration is ignored. dagit keeps working with the defaults
 and reports the problem from |:checkhealth| and |vim.notify()|.
@@ -418,7 +448,7 @@ The Lua module is `dagit`. Modules under `dagit._core` are private.
         Hide the description and files under every commit.
 
     require("dagit").filter_next()         *dagit.filter_next()*
-        Select the next filter (`all`, `local`, `remote`)
+        Select the next filter (`all`, `local`, `remote`, `head`)
         and redraw. Returns the active name, or nil when the
         history window is not focused.
 

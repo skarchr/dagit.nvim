@@ -36,9 +36,18 @@ local defaults = {
         commit_through = "",
         vertical = "",
         horizontal = "",
-        branch_start = "",
-        merge_right = "",
-        merge_left = "",
+        -- The branch-drawing corners are quarter circles, so the bar leaves
+        -- the midline. These are the sharp corners and tees. Ghostty, Kitty,
+        -- and Contour paint them to the cell edge, on the same stroke as the
+        -- straight lanes above.
+        branch_start = "┐",
+        merge_right = "┘",
+        merge_left = "└",
+        join_right = "├",
+        join_left = "┤",
+        -- One cell each. A wider glyph falls back to > or <.
+        arrow_right = "⊳",
+        arrow_left = "⊲",
         diagonal_right = "╲",
         diagonal_left = "╱",
     },
@@ -68,9 +77,13 @@ local portable_symbols = {
     commit_through = "󰜘",
     vertical = "│",
     horizontal = "─",
-    branch_start = "╮",
-    merge_right = "╯",
-    merge_left = "╰",
+    branch_start = "┐",
+    merge_right = "┘",
+    merge_left = "└",
+    join_right = "├",
+    join_left = "┤",
+    arrow_right = "⊳",
+    arrow_left = "⊲",
     diagonal_right = "╲",
     diagonal_left = "╱",
 }
@@ -206,6 +219,10 @@ local function validate_symbols(issues, cfg)
         "branch_start",
         "merge_right",
         "merge_left",
+        "join_right",
+        "join_left",
+        "arrow_right",
+        "arrow_left",
         "diagonal_right",
         "diagonal_left",
     }
@@ -299,7 +316,7 @@ function M.validate(cfg)
     end
 
     check_enum(issues, "split", cfg.split, { "bottom", "top" })
-    check_enum(issues, "filter", cfg.filter, { "all", "local", "remote" })
+    check_enum(issues, "filter", cfg.filter, { "all", "local", "remote", "head" })
 
     if check_type(issues, "max_count", cfg.max_count, "number") then
         if cfg.max_count < 1 or cfg.max_count % 1 ~= 0 then

@@ -52,7 +52,7 @@ describe("graph.layout", function()
 
     it("draws a branch to the right of a merge", function()
         assert.same({
-            symbols.commit_down .. symbols.horizontal .. symbols.branch_start,
+            symbols.commit_down .. symbols.arrow_left .. symbols.branch_start,
             symbols.vertical .. " " .. symbols.commit_through,
             symbols.vertical .. " " .. symbols.commit_through,
             symbols.vertical .. " " .. symbols.commit_through,
@@ -70,7 +70,7 @@ describe("graph.layout", function()
 
     it("draws a one-commit branch merged back into its parent", function()
         assert.same({
-            symbols.commit_down .. symbols.horizontal .. symbols.branch_start,
+            symbols.commit_down .. symbols.arrow_left .. symbols.branch_start,
             symbols.vertical .. " " .. symbols.commit_through,
             symbols.commit_up .. symbols.horizontal .. symbols.merge_right,
         }, texts({
@@ -141,7 +141,7 @@ describe("graph.layout", function()
 
         assert.equal(symbols.commit_down, rows[1].text)
         assert.equal(symbols.vertical .. " " .. symbols.commit_down, rows[2].text)
-        assert.equal(symbols.commit_through .. symbols.horizontal .. symbols.branch_start, rows[3].text)
+        assert.equal(symbols.commit_through .. symbols.arrow_left .. symbols.branch_start, rows[3].text)
         assert.equal(1, #rows[3].above)
         assert.equal(symbols.vertical .. symbols.horizontal .. symbols.merge_right, rows[3].above[1].text)
         assert.equal(symbols.vertical .. " " .. symbols.commit_through, rows[4].text)
@@ -171,7 +171,7 @@ describe("graph.layout", function()
 
         assert.equal(
             symbols.commit_through
-                .. symbols.horizontal
+                .. symbols.arrow_left
                 .. symbols.branch_start
                 .. symbols.horizontal
                 .. symbols.branch_start,
@@ -224,9 +224,69 @@ describe("graph.layout", function()
 
         local crossing = rows[7]
 
+        -- The lines meet where the branch was created, so the span stays a bar.
         assert.same({ 4, 4, 4 }, colors_of(crossing, symbols.horizontal))
         assert.same({ 2, 3 }, colors_of(crossing, symbols.vertical))
         assert.equal(1, crossing.color)
+    end)
+
+    it("meets a continuing parent on the right with a junction", function()
+        local rows = graph.layout({
+            { hash = "main_tip", parents = { "merge" } },
+            { hash = "feature_tip", parents = { "feature_mid" } },
+            { hash = "merge", parents = { "main_mid", "feature_mid" } },
+            { hash = "feature_mid", parents = { "base" } },
+            { hash = "main_mid", parents = { "base" } },
+            { hash = "base", parents = {} },
+        }, symbols)
+
+        assert.equal(symbols.commit_through .. symbols.arrow_left .. symbols.join_left, rows[3].text)
+
+        local function color_of(glyph)
+            for _, span in ipairs(rows[3].spans) do
+                if rows[3].text:sub(span.start + 1, span.stop) == glyph then
+                    return span.color
+                end
+            end
+        end
+
+        -- The arrow and the junction are the parent lane, so they read as one line.
+        assert.equal(color_of(symbols.join_left), color_of(symbols.arrow_left))
+        -- The root is where the branch was created, so that join stays a bar.
+        assert.equal(symbols.commit_up .. symbols.horizontal .. symbols.merge_right, rows[6].text)
+    end)
+
+    it("points a merge from a continuing lane into that commit", function()
+        assert.same({
+            symbols.commit_down,
+            symbols.vertical .. " " .. symbols.commit_down,
+            symbols.join_right .. symbols.arrow_right .. symbols.commit_through,
+            symbols.vertical .. " " .. symbols.commit_through,
+            symbols.commit_through .. " " .. symbols.vertical,
+            symbols.commit_up .. symbols.horizontal .. symbols.merge_right,
+        }, texts({
+            { hash = "main_tip", parents = { "main_mid" } },
+            { hash = "feature_tip", parents = { "merge" } },
+            { hash = "merge", parents = { "feature_prev", "main_mid" } },
+            { hash = "feature_prev", parents = { "base" } },
+            { hash = "main_mid", parents = { "base" } },
+            { hash = "base", parents = {} },
+        }))
+    end)
+
+    it("draws a wide arrow as a single cell", function()
+        local wide = vim.deepcopy(symbols)
+        wide.arrow_right = "＞"
+        wide.arrow_left = "＜"
+
+        local rows = graph.layout({
+            { hash = "M", parents = { "A", "B" } },
+            { hash = "B", parents = { "A" } },
+            { hash = "A", parents = {} },
+        }, wide)
+
+        assert.equal(wide.commit_down .. "<" .. wide.branch_start, rows[1].text)
+        assert.equal(wide.commit_up .. wide.horizontal .. wide.merge_right, rows[3].text)
     end)
 
     it("gives the side branch its own color", function()

@@ -5,8 +5,12 @@
 --- The commit glyph carries the vertical stroke and is drawn to the cell
 --- edge, so a straight lane meets the next row.
 --- Lanes that lead to the same commit stay apart until that commit. The left
---- lane stays, and the others draw a merge into it on that row. A child does
---- not join early just because its parent is already another lane.
+--- lane stays, and the others draw a line into it on that row. When this
+--- commit has another parent, the cell beside the commit is an arrow pointing
+--- at it. A parent lane that continues through the row draws a junction, so
+--- the arrow meets the line. Where a branch is created, that cell stays a
+--- plain line.
+--- A child does not join early just because its parent is already another lane.
 --- A lane keeps its column when a column to its left ends. The gap stays, so
 --- the line does not jump. A new branch may start in that gap. A horizontal
 --- that crosses the gap is drawn through it.
@@ -76,6 +80,21 @@ function M.layout(commits, symbols)
     local lanes = {}
     local next_color = 1
     local rows = {}
+
+    -- A wider glyph would shift every lane, so it falls back to ASCII.
+    -- A missing junction falls back to the plain vertical.
+    local function single_cell(symbol, fallback)
+        if type(symbol) == "string" and symbol ~= "" and vim.api.nvim_strwidth(symbol) == 1 then
+            return symbol
+        end
+
+        return fallback
+    end
+
+    local arrow_right = single_cell(symbols.arrow_right, ">")
+    local arrow_left = single_cell(symbols.arrow_left, "<")
+    local join_right = single_cell(symbols.join_right, symbols.vertical)
+    local join_left = single_cell(symbols.join_left, symbols.vertical)
 
     local function allocate()
         local color = next_color
@@ -364,11 +383,15 @@ function M.layout(commits, symbols)
             end
         end
 
+        ---@type table<integer, boolean>
+        local merged_parent = {}
+
         for parent_index = 2, #parents do
             local at = find(new_lanes, parents[parent_index])
 
             if at and at ~= idx then
                 linked[at] = true
+                merged_parent[at] = true
             end
         end
 
@@ -387,6 +410,8 @@ function M.layout(commits, symbols)
         local link_muted = {}
         ---@type table<integer, integer>
         local link_rank = {}
+        ---@type table<integer, boolean>
+        local link_merge = {}
 
         -- A branch keeps its own color while it crosses other lanes. The
         -- vertical it passes keeps that lane's color; only the horizontal
@@ -453,6 +478,9 @@ function M.layout(commits, symbols)
                         link_colors[cursor] = branch_color
                         link_muted[cursor] = branch_muted
                         link_rank[cursor] = distance
+                        -- Only a parent of this commit gets an arrow. A lane
+                        -- that arrives here is where a branch was created.
+                        link_merge[cursor] = merged_parent[column] == true
                     end
                 end
             end
@@ -518,6 +546,17 @@ function M.layout(commits, symbols)
                 node_length = #symbol
             elseif kind == "pass" then
                 symbol = symbols.vertical
+
+                -- The lane keeps going up and down, and grows the bar the
+                -- arrow connects to. A lane that starts or ends on this row
+                -- already has that bar in its corner.
+                if merged_parent[index] then
+                    if index > idx then
+                        symbol = join_left
+                    elseif index < idx then
+                        symbol = join_right
+                    end
+                end
             elseif kind == "branch_start" then
                 symbol = symbols.branch_start
             elseif kind == "merge_right" then
@@ -526,7 +565,21 @@ function M.layout(commits, symbols)
                 symbol = symbols.merge_left
             end
 
-            local link = connect[index] and symbols.horizontal or " "
+            local link = " "
+
+            if connect[index] then
+                link = symbols.horizontal
+
+                -- The head sits in the one cell that touches the commit.
+                -- Further cells of the same span stay a plain bar.
+                if link_merge[index] then
+                    if index == idx then
+                        link = arrow_left
+                    elseif index + 1 == idx then
+                        link = arrow_right
+                    end
+                end
+            end
             local link_color = link_colors[index] or piece_color
             local glyph_link_muted = link_muted[index]
 

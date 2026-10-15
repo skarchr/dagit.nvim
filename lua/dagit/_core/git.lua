@@ -216,17 +216,20 @@ end
 
 --- Mark commits that are only local, and commits that are only on a remote.
 ---
---- `remote_text` and `local_text` are `git rev-list` output. A missing
---- remote listing leaves the colors unchanged and treats every commit as
---- both local and remote, so those filters stay unfiltered. A missing
---- local listing does not mute the graph.
+--- `remote_text`, `local_text`, and `head_text` are `git rev-list` output.
+--- A missing remote listing leaves the colors unchanged and treats every
+--- commit as both local and remote, so those filters stay unfiltered. A
+--- missing local listing does not mute the graph. A missing HEAD listing
+--- treats every commit as reachable from the checked-out branch.
 ---
 ---@param commits dagit.Commit[]
 ---@param remote_text string?
 ---@param local_text string?
-function M.apply_reachability(commits, remote_text, local_text)
+---@param head_text string?
+function M.apply_reachability(commits, remote_text, local_text, head_text)
     local remote = hash_set(remote_text)
     local local_set = hash_set(local_text)
+    local head_set = hash_set(head_text)
 
     for _, commit in ipairs(commits) do
         if not remote then
@@ -243,6 +246,8 @@ function M.apply_reachability(commits, remote_text, local_text)
             commit.on_local = on_local
             commit.on_remote = on_remote
         end
+
+        commit.on_head = head_set == nil or head_set[commit.hash] == true
     end
 end
 
@@ -413,8 +418,9 @@ function M.log(git_cmd, cwd, log_args, max_count)
     local commits = M.parse(text)
     local remote_text = run(git_cmd, root, rev_list_window(commits, { "--remotes" }))
     local local_text = run(git_cmd, root, rev_list_window(commits, { "--branches", "HEAD" }))
+    local head_text = run(git_cmd, root, rev_list_window(commits, { "HEAD" }))
 
-    M.apply_reachability(commits, remote_text, local_text)
+    M.apply_reachability(commits, remote_text, local_text, head_text)
 
     local upstream_text = run(git_cmd, root, {
         "for-each-ref",

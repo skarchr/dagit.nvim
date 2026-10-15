@@ -21,6 +21,7 @@
 ---@field remote_only boolean On a remote-tracking ref, and not on a local branch or HEAD.
 ---@field on_local boolean Reachable from a local branch or HEAD.
 ---@field on_remote boolean Reachable from a remote-tracking ref.
+---@field on_head boolean Reachable from the checked-out branch.
 
 ---@class dagit.CommitFile
 --- One path changed by a commit.
@@ -60,6 +61,10 @@
 ---@field branch_start string
 ---@field merge_right string
 ---@field merge_left string
+---@field join_right string Vertical lane with a bar to the right. A merge parent that continues through the row.
+---@field join_left string Vertical lane with a bar to the left. A merge parent that continues through the row.
+---@field arrow_right string Merge from a lane on the left. One cell, pointing at the commit.
+---@field arrow_left string Merge from a lane on the right. One cell, pointing at the commit.
 ---@field diagonal_right string Parent lane sloping down to the right.
 ---@field diagonal_left string Parent lane sloping down to the left.
 
@@ -80,7 +85,7 @@
 --- Resolved configuration. Every field is present.
 ---@field height number Rows. A value between 0 and 1 is a fraction of the screen.
 ---@field split "bottom" | "top"
----@field filter "all" | "local" | "remote" Filter selected when a history window opens.
+---@field filter "all" | "local" | "remote" | "head" Filter selected when a history window opens.
 ---@field max_count integer Maximum commits to load.
 ---@field log_args string[] Extra arguments inserted into `git log`.
 ---@field date_format string `os.date` format, or `"relative"`. Another year is shown; the current year is left off.

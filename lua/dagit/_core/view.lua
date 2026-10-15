@@ -23,7 +23,7 @@ local NAMESPACE = vim.api.nvim_create_namespace("dagit")
 ---@field drawing boolean?
 ---@field expanded table<string, boolean>
 ---@field details table<string, dagit.CommitDetail>
----@field filter "all" | "local" | "remote"
+---@field filter "all" | "local" | "remote" | "head"
 ---@field shown dagit.Commit[] Commits left after the filter. Row indexes point here.
 
 ---@type table<integer, dagit.ViewState>
@@ -253,18 +253,19 @@ local function write_marker(state, row, glyph)
     apply_line_marks(state.buf, line, row - 1)
 end
 
-local FILTERS = { "all", "local", "remote" }
+local FILTERS = { "all", "local", "remote", "head" }
 
 local FILTER_FIELD = {
     ["local"] = "on_local",
     remote = "on_remote",
+    head = "on_head",
 }
 
 --- Commits the active filter leaves on screen.
 ---
 --- `all` is the loaded log. `local` keeps commits reachable from a local
 --- branch or HEAD. `remote` keeps commits reachable from a remote-tracking
---- ref.
+--- ref. `head` keeps commits reachable from the checked-out branch.
 ---
 ---@param commits dagit.Commit[]
 ---@param filter string?

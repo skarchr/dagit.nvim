@@ -60,6 +60,11 @@ describe("configuration", function()
 
         assert.same({}, issues)
         assert.equal("local", config.filter)
+
+        configuration.set_user_opts({ filter = "head" })
+        config, issues = configuration.resolve()
+        assert.same({}, issues)
+        assert.equal("head", config.filter)
         reset()
     end)
 

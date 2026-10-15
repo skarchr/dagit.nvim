@@ -88,7 +88,7 @@ end
 
 --- Select the next commit filter and redraw.
 ---
---- The names, in order, are `all`, `local`, and `remote`.
+--- The names, in order, are `all`, `local`, `remote`, and `head`.
 ---
 ---@return string? filter Active filter, or nil when the history is not focused.
 function M.filter_next()
